@@ -28,11 +28,6 @@ function pickVoice() {
   emit();
 }
 
-if (synth) {
-  pickVoice();
-  synth.addEventListener?.('voiceschanged', pickVoice);
-}
-
 // ---- tiny store so React can show which segment is being read ----
 let currentId: string | null = null;
 const listeners = new Set<() => void>();
@@ -128,3 +123,9 @@ export function useSpeakingAny(ids: string[]): boolean {
   return cur !== null && ids.includes(cur);
 }
 
+// Look for a Hebrew voice. This must stay at the end of the file: on iPad the voices
+// are ready immediately, and pickVoice() uses the store defined above.
+if (synth) {
+  pickVoice();
+  synth.addEventListener?.('voiceschanged', pickVoice);
+}
