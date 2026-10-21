@@ -60,6 +60,21 @@ try {
   /* storage may be unavailable */
 }
 
+/**
+ * The text the voice actually says. The Hebrew voice reads marks such as " and ' as English
+ * words, so in Hebrew they are left out (only from the sound; the screen shows the original).
+ * Acronyms (צה"ל) and quotes ("הים") read fine without them.
+ */
+export function spokenText(seg: Segment): string {
+  if (seg.lang === 'en') return seg.text;
+  return seg.text
+    .replace(/["'`‘’“”„׳״]/g, '') // quotes, geresh, gershayim
+    .replace(/[*•_#|~^]/g, ' ') // symbols the voice would name
+    .replace(/(\D)\/|\/(\D)/g, '$1 $2') // a slash between words (ו/או), but not in numbers (3/4)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 let token = 0;
 // Keep a reference so the utterance is not garbage-collected mid-speech (Chrome bug).
 let activeUtterance: SpeechSynthesisUtterance | null = null;
@@ -82,7 +97,7 @@ export const speech = {
         return;
       }
       const seg = segments[i++];
-      const u = new SpeechSynthesisUtterance(seg.text);
+      const u = new SpeechSynthesisUtterance(spokenText(seg));
       if (seg.lang === 'en') {
         u.lang = 'en-US';
         if (englishVoice) u.voice = englishVoice;
