@@ -159,7 +159,7 @@ export const db = {
   },
   async deleteExam(id: string) {
     await reqToPromise((await store('exams', 'readwrite')).delete(id));
-    await this.clearAnswers(id);
+    await this.deleteExamData(id);
   },
 
   // ---- answers ----
@@ -170,10 +170,33 @@ export const db = {
   async putAnswer(a: Answer) {
     await reqToPromise((await store('answers2', 'readwrite')).put(a));
   },
-  /** Removes this exam's answers and its "submitted" mark. Recordings stay on the device. */
-  async clearAnswers(examId: string) {
+  /**
+   * Deletes everything the student left in this exam: answers, recordings (including
+   * replaced ones), the pieces of recordings, and the exam's session marks. Frees space.
+   */
+  async deleteExamData(examId: string) {
+    const answers = await this.getAnswers(examId);
+    const clipIds = new Set(answers.flatMap((a) => a.clipIds));
     const d = await openDb();
-    const tx = d.transaction(['answers2', 'meta'], 'readwrite');
+    // 1. find this exam's recordings
+    const recIds: string[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const req = d.transaction('recordings', 'readonly').objectStore('recordings').openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return resolve();
+        const r = cursor.value as Recording;
+        if (r.examId === examId || clipIds.has(r.id)) recIds.push(r.id);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+    // 2. delete them with their pieces, the answers and the marks
+    const tx = d.transaction(['recordings', 'chunks', 'answers2', 'meta'], 'readwrite');
+    for (const id of recIds) {
+      tx.objectStore('recordings').delete(id);
+      tx.objectStore('chunks').delete(IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]));
+    }
     const idx = tx.objectStore('answers2').index('byExam');
     idx.openCursor(examId).onsuccess = (e) => {
       const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
@@ -181,8 +204,9 @@ export const db = {
       cursor.delete();
       cursor.continue();
     };
-    tx.objectStore('meta').delete(`submitted:${examId}`);
+    for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`]) tx.objectStore('meta').delete(k);
     await txDone(tx);
+    return recIds.length;
   },
 
   // ---- recordings ----
@@ -223,6 +247,17 @@ export const db = {
     await reqToPromise((await store('meta', 'readwrite')).delete(key));
   },
 };
+
+/** Who took the exam and when she started (saved when she starts). */
+export type Session = { studentName: string; startedAt: number };
+
+export async function ensureSession(examId: string): Promise<void> {
+  const key = `session:${examId}`;
+  const existing = await db.getMeta<Session>(key);
+  if (existing) return;
+  const studentName = (await db.getMeta<string>('studentName')) ?? '';
+  await db.setMeta(key, { studentName, startedAt: Date.now() } satisfies Session);
+}
 
 export function emptyAnswer(examId: string, itemId: string): Answer {
   return {

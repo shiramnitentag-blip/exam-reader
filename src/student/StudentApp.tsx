@@ -1,7 +1,7 @@
 // Student mode: the exam the teacher made active, one screen per question.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { shown, type Exam, type Item } from '../model';
-import { db, emptyAnswer, isAnswered, type Answer, type AnswerMode } from '../db';
+import { db, emptyAnswer, ensureSession, isAnswered, type Answer, type AnswerMode } from '../db';
 import { speech, type Segment } from '../speech';
 import { keepScreenOn, requestPersistentStorage } from '../device';
 import { ReadButton, ReadableText, SpeakText, SpeedControl, segmentsFor } from '../components/Speak';
@@ -83,6 +83,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
       const next = { ...fn(prev), examId: exam.id, itemId, updatedAt: Date.now() };
       answersRef.current = { ...answersRef.current, [itemId]: next };
       setAnswers(answersRef.current);
+      void ensureSession(exam.id).catch(() => {}); // records her name with the exam (once)
       db.putAnswer(next)
         .then(() => setSaveError(false))
         .catch(() => setSaveError(true));
@@ -120,6 +121,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
             className="btn btn-primary btn-huge"
             onClick={() => {
               void requestPersistentStorage();
+              void ensureSession(exam.id).catch(() => {});
               keepScreenOn(true);
               goQuestion(0);
             }}

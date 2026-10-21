@@ -13,8 +13,11 @@ export function Settings({ onBack }: { onBack: () => void }) {
   const [pinStep, setPinStep] = useState<'none' | 'verify' | 'new'>('none');
   const [newPin, setNewPin] = useState('');
   const [pinMsg, setPinMsg] = useState('');
+  const [student, setStudent] = useState('');
+  const [studentSaved, setStudentSaved] = useState(false);
 
   useEffect(() => {
+    db.getMeta<string>('studentName').then((n) => setStudent(n ?? ''));
     db.getMeta<string>('apiKey').then((k) => {
       setKey(k ?? '');
       setSaved(k ?? '');
@@ -59,6 +62,34 @@ export function Settings({ onBack }: { onBack: () => void }) {
       </header>
       <main className="main">
         <div className="page narrow">
+          <div className="card">
+            <h2 className="section-title">שֵׁם הַתַּלְמִידָה</h2>
+            <p className="help">הַשֵּׁם נִשְׁמָר עִם כָּל מִבְחָן שֶׁהִיא מַתְחִילָה, וּמוֹפִיעַ בַּתְּשׁוּבוֹת וּבַקְּבָצִים.</p>
+            <div className="key-row">
+              <input
+                className="text-input"
+                value={student}
+                placeholder="שֵׁם פְּרָטִי וּמִשְׁפָּחָה"
+                onChange={(e) => {
+                  setStudent(e.target.value);
+                  setStudentSaved(false);
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  const n = student.trim();
+                  if (n) await db.setMeta('studentName', n);
+                  else await db.deleteMeta('studentName');
+                  setStudentSaved(true);
+                }}
+              >
+                💾 שְׁמִירָה
+              </button>
+            </div>
+            {studentSaved && <div className="notice ok">✅ הַשֵּׁם נִשְׁמַר. הוּא יִכָּנֵס לְכָל מִבְחָן שֶׁיַּתְחִיל מֵעַכְשָׁו.</div>}
+          </div>
+
           <div className="card">
             <h2 className="section-title">מַפְתֵּחַ Claude API</h2>
             <p className="help">

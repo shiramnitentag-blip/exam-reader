@@ -7,8 +7,15 @@ import { Modal } from '../components/Modal';
 import { Settings } from './Settings';
 import { Upload } from './Upload';
 import { Review } from './Review';
+import { AnswersDetail, AnswersList } from './Answers';
 
-type View = { name: 'home' } | { name: 'settings' } | { name: 'upload' } | { name: 'review'; examId: string };
+type View =
+  | { name: 'home' }
+  | { name: 'settings' }
+  | { name: 'upload' }
+  | { name: 'review'; examId: string }
+  | { name: 'answers' }
+  | { name: 'answer'; examId: string };
 
 export async function getActiveExamId(): Promise<string> {
   return (await db.getMeta<string>('activeExamId')) ?? SAMPLE_ID;
@@ -40,6 +47,9 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
   }
 
   if (view.name === 'settings') return <Settings onBack={() => setView({ name: 'home' })} />;
+  if (view.name === 'answers')
+    return <AnswersList onBack={() => setView({ name: 'home' })} onOpen={(id) => setView({ name: 'answer', examId: id })} />;
+  if (view.name === 'answer') return <AnswersDetail examId={view.examId} onBack={() => setView({ name: 'answers' })} />;
   if (view.name === 'upload')
     return (
       <Upload
@@ -63,6 +73,9 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
       <header className="header">
         <div className="header-title">👩‍🏫 מַצַּב מוֹרָה</div>
         <div className="header-tools">
+          <button className="btn btn-small" onClick={() => setView({ name: 'answers' })}>
+            📥 תְּשׁוּבוֹת
+          </button>
           <button className="btn btn-small" onClick={() => setView({ name: 'settings' })}>
             ⚙️ הַגְדָּרוֹת
           </button>
@@ -129,7 +142,7 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
                           text: `לִמְחֹק אֶת הַתְּשׁוּבוֹת שֶׁל הַתַּלְמִידָה בַּמִּבְחָן "${ex.title}", כְּדֵי שֶׁתּוּכַל לְהִבָּחֵן בּוֹ מֵחָדָשׁ?`,
                           yes: 'כֵּן, לְאַפֵּס',
                           action: async () => {
-                            await db.clearAnswers(ex.id);
+                            await db.deleteExamData(ex.id);
                             try {
                               localStorage.removeItem(`screen:${ex.id}`);
                             } catch {

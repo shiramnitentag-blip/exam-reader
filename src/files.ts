@@ -1,3 +1,4 @@
+import mammoth from 'mammoth';
 // Reading the teacher's files: Word → text, PDF → as is, photos → resized JPEG.
 
 export function blobToBase64(blob: Blob): Promise<string> {
@@ -80,7 +81,6 @@ const BLOCKS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'TR', 'TA
  * as a picture, so the pictures are taken too, with marks showing where each one appears.
  */
 export async function readDocx(file: File): Promise<DocxContent> {
-  const mammoth = await import('mammoth');
   const raw: { base64: string; type: string }[] = [];
   const res = await mammoth.convertToHtml(
     { arrayBuffer: await file.arrayBuffer() },
