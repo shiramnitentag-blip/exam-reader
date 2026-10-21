@@ -26,19 +26,72 @@ const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+// Safari on some iPads (iOS 14-15) never answers the first indexedDB.open() after
+// the app starts. Poking indexedDB.databases() until it answers wakes it up.
+async function safariIdbFix(): Promise<void> {
+  const idb = indexedDB as IDBFactory & { databases?: () => Promise<unknown> };
+  if (!/Safari/.test(navigator.userAgent) || /Chrome|Android/.test(navigator.userAgent)) return;
+  if (!idb.databases) return;
+  await new Promise<void>((resolve) => {
+    let done = false;
+    let tries = 0;
+    const finish = () => {
+      done = true;
+      resolve();
+    };
+    const poke = () => {
+      if (done) return;
+      idb.databases!().then(finish, finish);
+      tries += 1;
+      if (tries < 30) window.setTimeout(poke, 100);
+      else finish();
+    };
+    poke();
+  });
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error('IndexedDB timeout')), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
-    dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        db.createObjectStore('answers', { keyPath: 'questionId' });
-        db.createObjectStore('recordings', { keyPath: 'id' });
-        db.createObjectStore('chunks', { keyPath: ['recId', 'i'] });
-        db.createObjectStore('meta', { keyPath: 'key' });
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+    const opening = safariIdbFix().then(
+      () =>
+        new Promise<IDBDatabase>((resolve, reject) => {
+          if (typeof indexedDB === 'undefined') {
+            reject(new Error('no IndexedDB'));
+            return;
+          }
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            db.createObjectStore('answers', { keyPath: 'questionId' });
+            db.createObjectStore('recordings', { keyPath: 'id' });
+            db.createObjectStore('chunks', { keyPath: ['recId', 'i'] });
+            db.createObjectStore('meta', { keyPath: 'key' });
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+          req.onblocked = () => reject(new Error('IndexedDB blocked'));
+        }),
+    );
+    dbPromise = withTimeout(opening, 6000);
+    // Let a later call try again if this one failed.
+    dbPromise.catch(() => {
+      dbPromise = null;
     });
   }
   return dbPromise;

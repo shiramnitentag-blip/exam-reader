@@ -73,7 +73,7 @@ export default function App() {
       .catch(() => setSaveError(true));
   }, []);
 
-  if (!loaded) return <div className="app loading" />;
+  if (!loaded) return <div className="boot-msg">טוֹעֶנֶת…</div>;
 
   const goQuestion = (index: number) => setScreen({ name: 'question', index });
 

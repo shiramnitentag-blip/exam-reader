@@ -13,7 +13,30 @@
     <title>מבחן בקול</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font:24px Arial,sans-serif;color:#1f2933;background:#fbf7ee">טוענת…</div>
+    </div>
+    <script>
+      // Shows why the app did not start (old browser, script error), instead of an empty screen.
+      (function () {
+        var shown = false;
+        function show(detail) {
+          if (shown || window.__appStarted) return;
+          shown = true;
+          var root = document.getElementById('root');
+          root.innerHTML =
+            '<div style="padding:32px;font:22px Arial,sans-serif;color:#1f2933;background:#fbf7ee;min-height:100vh;direction:rtl;text-align:right">' +
+            '<p>האפליקציה לא הצליחה להיפתח במכשיר הזה.</p>' +
+            '<p>צלמי את המסך הזה ושלחי אותו.</p>' +
+            '<pre dir="ltr" style="white-space:pre-wrap;font-size:14px;text-align:left"></pre></div>';
+          root.querySelector('pre').textContent = detail + '\n\n' + navigator.userAgent;
+        }
+        window.addEventListener('error', function (e) {
+          show('Error: ' + (e.message || (e.target && e.target.src) || 'unknown'));
+        }, true);
+        setTimeout(function () { show('Timeout: app did not start'); }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

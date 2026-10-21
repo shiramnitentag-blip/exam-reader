@@ -676,3 +676,23 @@ button {
   display: flex;
   gap: 16px;
 }
+
+/* ---------- loading / error message ---------- */
+.boot-msg {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  text-align: center;
+  font-size: 1.3rem;
+}
+.boot-detail {
+  direction: ltr;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+  max-width: 90vw;
+}

@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 // The site is served from https://<user>.github.io/exam-reader/
 export default defineConfig({
   base: '/exam-reader/',
+  // Compile for older iPads too (Safari 12+), not only the newest browsers.
+  build: { target: ['es2017', 'safari12', 'ios12'] },
   plugins: [
     react(),
     VitePWA({
