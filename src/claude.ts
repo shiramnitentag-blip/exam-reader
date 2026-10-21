@@ -193,7 +193,7 @@ Questions where reading aloud or nikud could give away the answer:
 Set reveals_answer to true when hearing the text read aloud, or seeing it with nikud, would help answer the question. Typical cases are Hebrew language (לשון) questions: adding nikud (נקדי / ניקוד), identifying a binyan (מה הבניין / באיזה בניין), finding a root (מצאי שורש / מה השורש), identifying a mishkal, tense, person, gender or number from the form of a word, spelling (כתיב), and questions about how a word is pronounced. Also English questions about spelling or pronunciation. reveal_reason: a short explanation in Hebrew, e.g. "שאלת שורש: הקראה עם ניקוד תחשוף את התשובה". Otherwise reveals_answer is false and reveal_reason is "".`;
 
 export type SourceInput =
-  | { kind: 'text'; text: string }
+  | { kind: 'text'; text: string; images: { base64: string; mediaType: 'image/jpeg' | 'image/png' }[] }
   | { kind: 'pdf'; base64: string }
   | { kind: 'images'; images: { base64: string; mediaType: 'image/jpeg' | 'image/png' }[] };
 
@@ -209,6 +209,22 @@ export async function extractExam(
       type: 'text',
       text: `This is the text of the exam, extracted from a Word file:\n<exam>\n${input.text}\n</exam>`,
     });
+    if (input.images.length > 0) {
+      content.push({
+        type: 'text',
+        text:
+          `The Word file also contains ${input.images.length} pictures. A line [IMAGE n] in the text above shows where picture n appears. ` +
+          'Teachers often paste exam text as a picture (a reading passage, a question, a table, answer options). ' +
+          'Read every picture carefully. If a picture contains exam text, copy that text word for word into the place where the picture appears, ' +
+          'exactly as if it had been typed there, following all the rules above. ' +
+          'If a picture is only a logo or decoration, ignore it. If it is a drawing or diagram without exam text, write [איור] where it appears. ' +
+          'Never write the [IMAGE n] marks themselves in the output.',
+      });
+      input.images.forEach((img, i) => {
+        content.push({ type: 'text', text: `Picture ${i + 1}:` });
+        content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
+      });
+    }
   } else if (input.kind === 'pdf') {
     content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: input.base64 } });
   } else {

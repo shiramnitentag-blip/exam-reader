@@ -5,7 +5,10 @@ import { newId, normalizeSpaces, sameWords, type Exam, type Item, type Txt } fro
 const HAS_HEBREW = /[א-ת]/;
 
 /** Builds an exam (not yet approved) from what Claude returned. */
-export function rawToExam(raw: RawExam, opts: { title: string; sourceText?: string; wantNikud: boolean }): Exam {
+export function rawToExam(
+  raw: RawExam,
+  opts: { title: string; sourceText?: string; wantNikud: boolean; hasPictures?: boolean },
+): Exam {
   const passageIds = new Map<string, string>();
   const passages = raw.passages.map((p) => {
     const id = newId();
@@ -75,7 +78,11 @@ export function rawToExam(raw: RawExam, opts: { title: string; sourceText?: stri
       }
     }
     if (missing > 0)
-      exam.notes!.push(`${missing} שאלות לא נמצאו מילה במילה בקובץ המקורי. הן מסומנות ב-⚠️. בדקי אותן מול המקור.`);
+      exam.notes!.push(
+        opts.hasPictures
+          ? `${missing} שאלות לא נמצאו מילה במילה בטקסט של קובץ הוורד. הן מסומנות ב-⚠️. חלקן אולי הגיעו מתמונות שבקובץ (את אלה אי אפשר לבדוק אוטומטית). בדקי אותן מול המקור.`
+          : `${missing} שאלות לא נמצאו מילה במילה בקובץ המקורי. הן מסומנות ב-⚠️. בדקי אותן מול המקור.`,
+      );
   }
   return exam;
 }

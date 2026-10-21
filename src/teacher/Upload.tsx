@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
 import { addNikud, extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
-import { blobToBase64, docxToText, fileKind, prepareImage, type PreparedImage } from '../files';
+import { blobToBase64, fileKind, prepareImage, readDocx, type PreparedImage } from '../files';
 import { applyNikud, hebrewTexts, rawToExam } from '../importer';
 import { keepScreenOn } from '../device';
 
@@ -109,10 +109,16 @@ export function Upload({
     try {
       let input: SourceInput;
       let sourceText: string | undefined;
+      let docxImages = 0;
+      let unreadable = 0;
       if (doc && fileKind(doc) === 'docx') {
-        sourceText = await docxToText(doc);
-        if (!sourceText.trim()) throw new Error('empty-docx');
-        input = { kind: 'text', text: sourceText };
+        const d = await readDocx(doc);
+        if (!d.plainText.trim() && d.images.length === 0) throw new Error('empty-docx');
+        sourceText = d.plainText;
+        docxImages = d.images.length;
+        unreadable = d.unreadable;
+        input = { kind: 'text', text: d.text, images: d.images.map((i) => ({ base64: i.base64, mediaType: i.mediaType })) };
+        if (docxImages > 0) setStep('prep', { detail: `טֶקְסְט + ${docxImages} תְּמוּנוֹת` });
       } else if (doc) {
         input = { kind: 'pdf', base64: await blobToBase64(doc) };
       } else {
@@ -129,7 +135,11 @@ export function Upload({
         ctrl.signal,
       );
       if (raw.questions.length === 0) throw new Error('no-questions');
-      const exam = rawToExam(raw, { title, sourceText, wantNikud });
+      const exam = rawToExam(raw, { title, sourceText, wantNikud, hasPictures: docxImages > 0 });
+      if (unreadable > 0)
+        exam.notes!.push(
+          `בַּקֹּבֶץ יֵשׁ ${unreadable} צִיּוּרִים שֶׁלֹּא הִצְלַחְתִּי לִקְרֹא. אִם יֵשׁ בָּהֶם טֶקְסְט שֶׁל הַמִּבְחָן, עֲדִיף לְהַעֲלוֹת אֶת הַמִּבְחָן כְּ-PDF.`,
+        );
       setStep('read', { state: 'done', detail: `נִמְצְאוּ ${exam.items.length} שְׁאֵלוֹת` });
 
       if (wantNikud) {
