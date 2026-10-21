@@ -2,7 +2,7 @@
 // a higher-quality voice comes in a later stage).
 import { useSyncExternalStore } from 'react';
 
-export type Segment = { id: string; text: string };
+export type Segment = { id: string; text: string; lang?: 'he' | 'en' };
 export type Speed = 'slow' | 'normal' | 'fast';
 
 const RATES: Record<Speed, number> = { slow: 0.7, normal: 0.95, fast: 1.2 };
@@ -10,7 +10,8 @@ const RATES: Record<Speed, number> = { slow: 0.7, normal: 0.95, fast: 1.2 };
 const synth: SpeechSynthesis | undefined =
   typeof window !== 'undefined' ? window.speechSynthesis : undefined;
 
-let voice: SpeechSynthesisVoice | null = null;
+let voice: SpeechSynthesisVoice | null = null; // Hebrew
+let englishVoice: SpeechSynthesisVoice | null = null;
 let voicesChecked = false;
 
 function pickVoice() {
@@ -18,12 +19,20 @@ function pickVoice() {
   const voices = synth.getVoices();
   if (voices.length === 0) return;
   voicesChecked = true;
-  const hebrew = voices.filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith('he'));
+  const langOf = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
+  const hebrew = voices.filter((v) => langOf(v).startsWith('he'));
   voice =
     hebrew.find((v) => /carmit/i.test(v.name) && /enhanced|premium/i.test(v.name)) ??
     hebrew.find((v) => /carmit/i.test(v.name)) ??
     hebrew.find((v) => v.localService) ??
     hebrew[0] ??
+    null;
+  const english = voices.filter((v) => langOf(v).startsWith('en'));
+  englishVoice =
+    english.find((v) => langOf(v) === 'en-us' && v.localService) ??
+    english.find((v) => langOf(v) === 'en-us') ??
+    english.find((v) => v.localService) ??
+    english[0] ??
     null;
   emit();
 }
@@ -74,8 +83,13 @@ export const speech = {
       }
       const seg = segments[i++];
       const u = new SpeechSynthesisUtterance(seg.text);
-      u.lang = 'he-IL';
-      if (voice) u.voice = voice;
+      if (seg.lang === 'en') {
+        u.lang = 'en-US';
+        if (englishVoice) u.voice = englishVoice;
+      } else {
+        u.lang = 'he-IL';
+        if (voice) u.voice = voice;
+      }
       u.rate = RATES[speed];
       u.onend = () => next();
       u.onerror = () => next();

@@ -1,4 +1,5 @@
 import { speech, useSpeaking, useSpeed, type Segment, type Speed } from '../speech';
+import { sentenceSegments, voiceFor, type Lang, type ReadMode } from '../model';
 
 /** Sentences the student can tap: tapping one reads only that sentence. */
 export function SpeakText({
@@ -40,6 +41,13 @@ export function ReadButton({
 }) {
   const current = useSpeaking();
   const active = current !== null && segments.some((s) => s.id === current);
+  if (segments.length === 0) {
+    return (
+      <div className={`no-read ${className}`}>
+        <span aria-hidden>🔇</span> בְּלִי הַקְרָאָה
+      </div>
+    );
+  }
   return (
     <button
       className={`btn btn-read ${active ? 'active' : ''} ${className}`}
@@ -79,6 +87,56 @@ export function SpeedControl() {
       <span className="speed-icon" aria-hidden>
         🐇
       </span>
+    </div>
+  );
+}
+
+/** Everything the voice says for a text, in order, according to the read mode. */
+export function segmentsFor(text: string, idPrefix: string, lang: Lang, mode: ReadMode): Segment[] {
+  return sentenceSegments(text, idPrefix, lang)
+    .flat()
+    .flatMap((s) => voiceFor(s, mode));
+}
+
+/** Any exam text: paragraphs of tappable sentences. Tapping a sentence reads only it. */
+export function ReadableText({
+  text,
+  idPrefix,
+  lang,
+  mode = 'normal',
+  className = '',
+}: {
+  text: string;
+  idPrefix: string;
+  lang: Lang;
+  mode?: ReadMode;
+  className?: string;
+}) {
+  const current = useSpeaking();
+  const paras = sentenceSegments(text, idPrefix, lang);
+  return (
+    <div className={`readable ${className}`} dir={lang === 'en' ? 'ltr' : 'rtl'} lang={lang}>
+      {paras.map((p, i) => (
+        <p key={i} className="speak-text">
+          {p.map((seg) =>
+            mode === 'none' ? (
+              <span key={seg.id} className="sentence plain">
+                {seg.text}
+              </span>
+            ) : (
+              <span
+                key={seg.id}
+                role="button"
+                tabIndex={0}
+                className={`sentence${current === seg.id ? ' reading' : ''}`}
+                onClick={() => (current === seg.id ? speech.stop() : speech.speak(voiceFor(seg, mode)))}
+              >
+                {seg.text}
+              </span>
+            ),
+          )}
+        </p>
+      ))}
     </div>
   );
 }

@@ -1,9 +1,12 @@
-// Everything the student does is saved in IndexedDB on the device right away.
+// Everything is saved in IndexedDB on the device right away: exams, answers, recordings,
+// teacher settings (PIN, API key). Nothing is sent anywhere except the API calls the teacher starts.
+import type { Exam } from './model';
 
 export type AnswerMode = 'record' | 'text';
 
 export type Answer = {
-  questionId: string;
+  examId: string;
+  itemId: string;
   mode: AnswerMode;
   clipIds: string[]; // recordings that make up the spoken answer, in order
   text: string; // dictated / typed answer
@@ -14,7 +17,8 @@ export type Answer = {
 
 export type Recording = {
   id: string;
-  questionId: string;
+  examId?: string;
+  questionId: string; // item id
   mimeType: string;
   createdAt: number;
   durationSec: number;
@@ -22,7 +26,7 @@ export type Recording = {
 };
 
 const DB_NAME = 'exam-reader';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -66,6 +70,36 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function upgrade(db: IDBDatabase, tx: IDBTransaction, oldVersion: number) {
+  if (oldVersion < 1) {
+    db.createObjectStore('answers', { keyPath: 'questionId' }); // stage 1 (kept for migration)
+    db.createObjectStore('recordings', { keyPath: 'id' });
+    db.createObjectStore('chunks', { keyPath: ['recId', 'i'] });
+    db.createObjectStore('meta', { keyPath: 'key' });
+  }
+  if (oldVersion < 2) {
+    db.createObjectStore('exams', { keyPath: 'id' });
+    const answers = db.createObjectStore('answers2', { keyPath: ['examId', 'itemId'] });
+    answers.createIndex('byExam', 'examId');
+    // Stage-1 answers belonged to the sample exam.
+    const old = tx.objectStore('answers');
+    old.openCursor().onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (!cursor) return;
+      const a = cursor.value as Omit<Answer, 'examId' | 'itemId'> & { questionId: string };
+      const { questionId, ...rest } = a;
+      answers.put({ ...rest, examId: 'sample', itemId: questionId });
+      cursor.continue();
+    };
+    // The stage-1 "submitted" flag also belonged to the sample exam.
+    const meta = tx.objectStore('meta');
+    const req = meta.get('submitted');
+    req.onsuccess = () => {
+      if (req.result) meta.put({ key: 'submitted:sample', value: req.result.value });
+    };
+  }
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     const opening = safariIdbFix().then(
@@ -76,13 +110,7 @@ function openDb(): Promise<IDBDatabase> {
             return;
           }
           const req = indexedDB.open(DB_NAME, DB_VERSION);
-          req.onupgradeneeded = () => {
-            const db = req.result;
-            db.createObjectStore('answers', { keyPath: 'questionId' });
-            db.createObjectStore('recordings', { keyPath: 'id' });
-            db.createObjectStore('chunks', { keyPath: ['recId', 'i'] });
-            db.createObjectStore('meta', { keyPath: 'key' });
-          };
+          req.onupgradeneeded = (e) => upgrade(req.result, req.transaction!, e.oldVersion);
           req.onsuccess = () => resolve(req.result);
           req.onerror = () => reject(req.error);
           req.onblocked = () => reject(new Error('IndexedDB blocked'));
@@ -109,14 +137,55 @@ async function store(name: string, mode: IDBTransactionMode) {
   return db.transaction(name, mode).objectStore(name);
 }
 
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 export const db = {
-  async getAllAnswers(): Promise<Answer[]> {
-    return reqToPromise((await store('answers', 'readonly')).getAll());
+  // ---- exams ----
+  async listExams(): Promise<Exam[]> {
+    const all: Exam[] = await reqToPromise((await store('exams', 'readonly')).getAll());
+    return all.sort((a, b) => a.createdAt - b.createdAt);
   },
-  async putAnswer(a: Answer) {
-    await reqToPromise((await store('answers', 'readwrite')).put(a));
+  async getExam(id: string): Promise<Exam | undefined> {
+    return reqToPromise((await store('exams', 'readonly')).get(id));
+  },
+  async putExam(exam: Exam) {
+    await reqToPromise((await store('exams', 'readwrite')).put(exam));
+  },
+  async deleteExam(id: string) {
+    await reqToPromise((await store('exams', 'readwrite')).delete(id));
+    await this.clearAnswers(id);
   },
 
+  // ---- answers ----
+  async getAnswers(examId: string): Promise<Answer[]> {
+    const s = await store('answers2', 'readonly');
+    return reqToPromise(s.index('byExam').getAll(examId));
+  },
+  async putAnswer(a: Answer) {
+    await reqToPromise((await store('answers2', 'readwrite')).put(a));
+  },
+  /** Removes this exam's answers and its "submitted" mark. Recordings stay on the device. */
+  async clearAnswers(examId: string) {
+    const d = await openDb();
+    const tx = d.transaction(['answers2', 'meta'], 'readwrite');
+    const idx = tx.objectStore('answers2').index('byExam');
+    idx.openCursor(examId).onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (!cursor) return;
+      cursor.delete();
+      cursor.continue();
+    };
+    tx.objectStore('meta').delete(`submitted:${examId}`);
+    await txDone(tx);
+  },
+
+  // ---- recordings ----
   async putRecording(r: Recording) {
     await reqToPromise((await store('recordings', 'readwrite')).put(r));
   },
@@ -142,6 +211,7 @@ export const db = {
     );
   },
 
+  // ---- small settings ----
   async getMeta<T>(key: string): Promise<T | undefined> {
     const row = await reqToPromise((await store('meta', 'readonly')).get(key));
     return row?.value as T | undefined;
@@ -149,21 +219,15 @@ export const db = {
   async setMeta(key: string, value: unknown) {
     await reqToPromise((await store('meta', 'readwrite')).put({ key, value }));
   },
-
-  async clearAll() {
-    const db = await openDb();
-    const tx = db.transaction(['answers', 'recordings', 'chunks', 'meta'], 'readwrite');
-    for (const n of ['answers', 'recordings', 'chunks', 'meta']) tx.objectStore(n).clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+  async deleteMeta(key: string) {
+    await reqToPromise((await store('meta', 'readwrite')).delete(key));
   },
 };
 
-export function emptyAnswer(questionId: string): Answer {
+export function emptyAnswer(examId: string, itemId: string): Answer {
   return {
-    questionId,
+    examId,
+    itemId,
     mode: 'record',
     clipIds: [],
     text: '',

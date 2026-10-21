@@ -121,7 +121,8 @@ export function Recorder({
     let index = 0;
     let writes: Promise<unknown> = db.putRecording({
       id,
-      questionId: answer.questionId,
+      examId: answer.examId,
+      questionId: answer.itemId,
       mimeType,
       createdAt,
       durationSec: 0,
@@ -154,7 +155,15 @@ export function Recorder({
           update((a) => ({ ...a, clipIds: a.clipIds.filter((c) => c !== id) }));
           setError('הַהַקְלָטָה רֵיקָה. נַסִּי שׁוּב.');
         } else {
-          await db.putRecording({ id, questionId: answer.questionId, mimeType, createdAt, durationSec, blob });
+          await db.putRecording({
+            id,
+            examId: answer.examId,
+            questionId: answer.itemId,
+            mimeType,
+            createdAt,
+            durationSec,
+            blob,
+          });
           if (action === 'replace') {
             update((a) => ({ ...a, clipIds: a.clipIds.filter((c) => !previous.includes(c)) }));
           }

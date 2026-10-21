@@ -5,11 +5,13 @@ import type { Answer } from '../db';
 export function Dictation({
   answer,
   update,
+  lang = 'he',
 }: {
   answer: Answer;
   update: (fn: (a: Answer) => Answer) => void;
+  lang?: 'he' | 'en';
 }) {
-  const segId = `typed-${answer.questionId}`;
+  const segId = `typed-${answer.itemId}`;
   const reading = useSpeaking() === segId;
   const hasText = answer.text.trim().length > 0;
 
@@ -25,8 +27,8 @@ export function Dictation({
       </div>
       <textarea
         className={`dictation-box ${reading ? 'reading' : ''}`}
-        dir="rtl"
-        lang="he"
+        dir={lang === 'en' ? 'ltr' : 'rtl'}
+        lang={lang}
         value={answer.text}
         placeholder="כָּאן תּוֹפִיעַ הַתְּשׁוּבָה שֶׁלָּךְ…"
         onChange={(e) => {
@@ -38,7 +40,7 @@ export function Dictation({
         <button
           className={`btn btn-read ${reading ? 'active' : ''}`}
           disabled={!hasText}
-          onClick={() => (reading ? speech.stop() : speech.speak([{ id: segId, text: answer.text }]))}
+          onClick={() => (reading ? speech.stop() : speech.speak([{ id: segId, text: answer.text, lang }]))}
         >
           <span className="icon" aria-hidden>
             {reading ? '⏹' : '🔊'}

@@ -696,3 +696,510 @@ button {
   color: var(--muted);
   max-width: 90vw;
 }
+
+/* ---------- readable text (stage 3) ---------- */
+.readable p + p {
+  margin-top: 0.7em;
+}
+.sentence.plain {
+  cursor: default;
+}
+.no-read {
+  min-height: 64px;
+  border-radius: 18px;
+  border: 2px dashed var(--border);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.teacher-entry {
+  min-width: 52px;
+  padding: 4px 10px;
+  opacity: 0.7;
+}
+
+/* ---------- PIN ---------- */
+.pin-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.pin-box {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+.pin-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.pin-hint {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.pin-dots {
+  display: flex;
+  gap: 18px;
+  margin: 8px 0;
+}
+.pin-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--primary);
+}
+.pin-dot.on {
+  background: var(--primary);
+}
+.pin-error {
+  min-height: 1.8em;
+  color: var(--rec);
+  font-weight: 700;
+}
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  width: 100%;
+}
+.pin-key {
+  height: 80px;
+  border-radius: 20px;
+  border: 2px solid var(--border);
+  background: var(--card);
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+.pin-key:active {
+  background: var(--soft);
+}
+.pin-key.pin-small {
+  font-size: 1rem;
+}
+.pin-key:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- teacher: shared ---------- */
+.teacher .main {
+  background: #f5f2ea;
+}
+.section-title {
+  font-size: 1.15rem;
+  margin: 8px 0 4px;
+}
+.help {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0;
+}
+.field-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.field-label.small {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.text-input,
+.select {
+  font: inherit;
+  font-size: 1rem;
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  width: 100%;
+}
+.select {
+  width: auto;
+}
+.text-input:focus,
+.select:focus,
+.edit-area:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.key-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.key-input {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.9rem;
+}
+.pin-input {
+  max-width: 160px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-size: 1.4rem;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.link-btn {
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: underline;
+  padding: 0;
+}
+.notice.ok {
+  background: var(--green-bg);
+  border-color: var(--green);
+}
+.notice.flag-note {
+  background: #fff6c8;
+  border-color: #e6c64a;
+}
+.warn {
+  color: #8a5a00;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.btn-danger {
+  background: var(--rec);
+  border-color: var(--rec);
+  color: #fff;
+}
+.btn-danger-outline {
+  color: var(--rec);
+  border-color: #efb3b3;
+}
+.btn-icon {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0;
+  border-radius: 12px;
+}
+.check-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.check-row input {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  margin-top: 4px;
+  accent-color: var(--primary);
+}
+.check-row.small {
+  font-size: 0.95rem;
+  align-items: center;
+}
+.check-row.small input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+}
+
+/* ---------- teacher: exam list ---------- */
+.exam-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.exam-card.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px var(--green-bg);
+}
+.exam-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.exam-card-title {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+.exam-card-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.exam-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.badge {
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: var(--soft);
+}
+.badge.green {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.badge.yellow {
+  background: #fff1c2;
+  color: #7a5a00;
+}
+
+/* ---------- teacher: upload ---------- */
+.pick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 700px) {
+  .pick-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.pick-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 120px;
+  border: 2px dashed var(--primary);
+  border-radius: 18px;
+  background: var(--soft);
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  padding: 10px;
+}
+.pick-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pick-icon {
+  font-size: 2rem;
+}
+.picked-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--soft);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.picked-name {
+  flex: 1;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.thumb {
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 8px;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.thumb img {
+  width: 100%;
+  height: 160px;
+  object-fit: contain;
+  background: #eee;
+  border-radius: 8px;
+}
+.thumb-num {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.thumb-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 1.1rem;
+}
+.step.wait {
+  color: var(--muted);
+}
+.step.run .step-label {
+  font-weight: 700;
+}
+.step-icon {
+  width: 32px;
+  display: flex;
+  justify-content: center;
+}
+.step-detail {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-inline-start: auto;
+}
+.spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 4px solid var(--soft);
+  border-top-color: var(--primary);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- teacher: review ---------- */
+.page.review {
+  max-width: 980px;
+}
+.page.review section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.review-card {
+  gap: 12px;
+}
+.item-card.flagged {
+  background: #fffbe0;
+  border-color: #e6c64a;
+}
+.flag-banner {
+  background: #fff1a8;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+}
+.card-tools,
+.card-actions,
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.card-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.setting-name {
+  font-weight: 700;
+  min-width: 70px;
+}
+.label-input {
+  width: 90px;
+  text-align: center;
+  font-weight: 700;
+}
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 4px;
+}
+.segmented button {
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.segmented button.on {
+  background: var(--primary);
+  color: #fff;
+}
+.segmented.disabled {
+  opacity: 0.45;
+}
+.txt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.edit-area {
+  width: 100%;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1.8;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  resize: vertical;
+}
+.edit-area.nikud {
+  background: #fbfaf5;
+}
+.options-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.option-edit-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.option-num {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin-top: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.approve-box {
+  border-color: var(--primary);
+}
