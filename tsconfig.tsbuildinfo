@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/db.ts","./src/device.ts","./src/exam.ts","./src/main.tsx","./src/speech.ts","./src/components/Choice.tsx","./src/components/Dictation.tsx","./src/components/Recorder.tsx","./src/components/Speak.tsx","./vite.config.ts"],"version":"5.6.3"}
