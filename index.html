@@ -11,10 +11,33 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <title>מבחן בקול</title>
-    <script type="module" crossorigin src="/exam-reader/assets/index-Ca8N5dZ2.js"></script>
-    <link rel="stylesheet" crossorigin href="/exam-reader/assets/index-CV2Y87_Q.css">
+    <script type="module" crossorigin src="/exam-reader/assets/index-CvXaecfU.js"></script>
+    <link rel="stylesheet" crossorigin href="/exam-reader/assets/index-Q3S634qh.css">
   <link rel="manifest" href="/exam-reader/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/exam-reader/registerSW.js"></script></head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font:24px Arial,sans-serif;color:#1f2933;background:#fbf7ee">טוענת…</div>
+    </div>
+    <script>
+      // Shows why the app did not start (old browser, script error), instead of an empty screen.
+      (function () {
+        var shown = false;
+        function show(detail) {
+          if (shown || window.__appStarted) return;
+          shown = true;
+          var root = document.getElementById('root');
+          root.innerHTML =
+            '<div style="padding:32px;font:22px Arial,sans-serif;color:#1f2933;background:#fbf7ee;min-height:100vh;direction:rtl;text-align:right">' +
+            '<p>האפליקציה לא הצליחה להיפתח במכשיר הזה.</p>' +
+            '<p>צלמי את המסך הזה ושלחי אותו.</p>' +
+            '<pre dir="ltr" style="white-space:pre-wrap;font-size:14px;text-align:left"></pre></div>';
+          root.querySelector('pre').textContent = detail + '\n\n' + navigator.userAgent;
+        }
+        window.addEventListener('error', function (e) {
+          show('Error: ' + (e.message || (e.target && e.target.src) || 'unknown'));
+        }, true);
+        setTimeout(function () { show('Timeout: app did not start'); }, 15000);
+      })();
+    </script>
   </body>
 </html>
