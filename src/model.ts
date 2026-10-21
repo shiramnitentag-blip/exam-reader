@@ -64,9 +64,136 @@ export function normalizeSpaces(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+// Characters that look different but mean the same (Hebrew vs. typewriter quote marks).
+const SAME_CHAR: Record<string, string> = { '״': '"', '“': '"', '”': '"', '„': '"', '׳': "'", '‘': "'", '’': "'" };
+
+/** The letters of a text without nikud, with equivalent quote marks made the same. */
+export function baseForm(s: string): string {
+  return stripNikud(s.normalize('NFD')).replace(/[״“”„׳‘’]/g, (c) => SAME_CHAR[c]);
+}
+
 /** True if the vocalized text has exactly the same letters and words as the original. */
 export function sameWords(original: string, vocalized: string): boolean {
-  return normalizeSpaces(stripNikud(original)) === normalizeSpaces(stripNikud(vocalized));
+  return normalizeSpaces(baseForm(original)) === normalizeSpaces(baseForm(vocalized));
+}
+
+const NIKUD_ONE = /[֑-ׇ]/;
+const MATRES = /[וי]/; // letters that may be written or left out as vowels (ktiv male / haser)
+const HOLAM = 'ֹ';
+const KUBUTZ = 'ֻ';
+const DAGESH = 'ּ';
+
+/** A word as letters, each with the marks that follow it. */
+function clusters(word: string): { ch: string; marks: string }[] {
+  const out: { ch: string; marks: string }[] = [];
+  for (const c of word.normalize('NFD')) {
+    if (NIKUD_ONE.test(c) && out.length) out[out.length - 1].marks += c;
+    else if (!NIKUD_ONE.test(c)) out.push({ ch: c, marks: '' });
+  }
+  return out;
+}
+
+/**
+ * Puts the nikud of Claude's word onto the original word, letter by letter, keeping the
+ * original letters. Claude often vocalizes in "ktiv haser" (שֹׁרֶשׁ for שורש): a vowel letter
+ * ו or י that only one side has is allowed, and the vowel moves onto the ו (שׁוֹרֶשׁ).
+ * Returns null if the words differ in any other way.
+ */
+export function fitMarks(orig: string, voc: string): string | null {
+  const o = clusters(orig).map((c) => c.ch);
+  const v = clusters(voc);
+  const key = (c: string) => SAME_CHAR[c] ?? c;
+  const n = o.length;
+  const m = v.length;
+  const L: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let a = n - 1; a >= 0; a--)
+    for (let b = m - 1; b >= 0; b--)
+      L[a][b] = key(o[a]) === key(v[b].ch) ? L[a + 1][b + 1] + 1 : Math.max(L[a + 1][b], L[a][b + 1]);
+  const out: { ch: string; marks: string }[] = [];
+  let a = 0;
+  let b = 0;
+  while (a < n || b < m) {
+    if (a < n && b < m && key(o[a]) === key(v[b].ch)) {
+      out.push({ ch: o[a++], marks: v[b++].marks });
+    } else if (a < n && (b >= m || L[a + 1][b] >= L[a][b + 1])) {
+      // a letter only the original has: allowed only for a vowel letter ו / י
+      const ch = o[a++];
+      if (!MATRES.test(ch)) return null;
+      const prev = out[out.length - 1];
+      if (ch === 'ו' && prev?.marks.includes(HOLAM)) {
+        prev.marks = prev.marks.replace(HOLAM, '');
+        out.push({ ch, marks: HOLAM }); // וֹ
+      } else if (ch === 'ו' && prev?.marks.includes(KUBUTZ)) {
+        prev.marks = prev.marks.replace(KUBUTZ, '');
+        out.push({ ch, marks: DAGESH }); // וּ
+      } else out.push({ ch, marks: '' });
+    } else {
+      // a letter only Claude's version has: allowed only for a vowel letter, and it is left out
+      if (!MATRES.test(v[b++].ch)) return null;
+    }
+  }
+  return out.map((c) => c.ch + c.marks).join('').normalize('NFC');
+}
+
+/**
+ * Takes nikud from Claude's version word by word. A word Claude changed keeps its original
+ * form (without new nikud), so one changed word no longer cancels the nikud of a whole text.
+ * Spaces and line breaks always come from the original.
+ */
+export function mergeNikud(original: string, vocalized: string): { text: string; matched: number; total: number } {
+  const parts = original.split(/(\s+)/); // words at even indexes, spaces at odd ones
+  const wordIdx: number[] = [];
+  parts.forEach((p, i) => {
+    if (i % 2 === 0 && p) wordIdx.push(i);
+  });
+  // Words are paired by their letters without ו / י, so a ktiv-haser spelling still pairs up.
+  const skeleton = (w: string) => baseForm(w).replace(/[וי]/g, '');
+  const origKeys = wordIdx.map((i) => skeleton(parts[i]));
+  const vocWords = vocalized.split(/\s+/).filter(Boolean);
+  const vocKeys = vocWords.map(skeleton);
+  const n = origKeys.length;
+  const m = vocKeys.length;
+
+  // Pair up identical words in order (longest common subsequence; texts are nearly the same).
+  const pairs: [number, number][] = [];
+  if (n * m <= 4_000_000) {
+    const w = m + 1;
+    const L = new Uint16Array((n + 1) * w);
+    for (let a = n - 1; a >= 0; a--)
+      for (let b = m - 1; b >= 0; b--)
+        L[a * w + b] = origKeys[a] === vocKeys[b] ? L[(a + 1) * w + b + 1] + 1 : Math.max(L[(a + 1) * w + b], L[a * w + b + 1]);
+    let a = 0;
+    let b = 0;
+    while (a < n && b < m) {
+      if (origKeys[a] === vocKeys[b]) pairs.push([a++, b++]);
+      else if (L[(a + 1) * w + b] >= L[a * w + b + 1]) a++;
+      else b++;
+    }
+  } else {
+    for (let a = 0, b = 0; a < n && b < m; ) {
+      if (origKeys[a] === vocKeys[b]) pairs.push([a++, b++]);
+      else a++, b++;
+    }
+  }
+  let matched = 0;
+  for (const [a, b] of pairs) {
+    const orig = parts[wordIdx[a]];
+    if (NIKUD_ONE.test(orig)) {
+      matched++; // already vocalized in the original: kept exactly as it is
+      continue;
+    }
+    const fitted = fitMarks(orig, vocWords[b]);
+    if (fitted !== null) {
+      parts[wordIdx[a]] = fitted;
+      matched++;
+    }
+  }
+  return { text: parts.join(''), matched, total: n };
+}
+
+/** Hebrew words that have no vowel marks at all (to show the teacher what is missing). */
+export function wordsWithoutNikud(s: string): number {
+  return s.split(/\s+/).filter((w) => /[\u05D0-\u05EA]/.test(w) && !NIKUD_ONE.test(w)).length;
 }
 
 /** The text the student sees and hears. */

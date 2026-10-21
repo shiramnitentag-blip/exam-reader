@@ -1,6 +1,6 @@
 // Turning Claude's answer into an exam, and checking it.
 import type { RawExam } from './claude';
-import { newId, normalizeSpaces, sameWords, type Exam, type Item, type Txt } from './model';
+import { itemHasNikud, mergeNikud, newId, normalizeSpaces, type Exam, type Item, type Txt } from './model';
 
 const HAS_HEBREW = /[א-ת]/;
 
@@ -107,23 +107,38 @@ export function hebrewTexts(exam: Exam): { id: string; text: string; target: Txt
   return out;
 }
 
+export type NikudResult = { done: number; partial: number; failedIds: string[] };
+
 /**
- * Stores the nikud Claude returned — only where the letters and words stayed exactly the same.
- * Returns how many texts were rejected.
+ * Stores the nikud Claude returned, word by word: a word Claude changed stays as written
+ * (without nikud), the rest of the text gets its nikud. Texts with no usable nikud at all
+ * are returned in failedIds, so they can be sent again.
  */
-export function applyNikud(exam: Exam, result: Record<string, string>): number {
-  let rejected = 0;
+export function applyNikud(exam: Exam, result: Record<string, string>, onlyIds?: Set<string>): NikudResult {
+  const res: NikudResult = { done: 0, partial: 0, failedIds: [] };
   for (const t of hebrewTexts(exam)) {
+    if (onlyIds && !onlyIds.has(t.id)) continue;
     const voc = result[t.id];
-    if (voc && sameWords(t.text, voc)) t.target.nikud = voc;
-    else rejected++;
+    const merged = voc ? mergeNikud(t.text, voc) : null;
+    if (!merged || merged.matched === 0) {
+      res.failedIds.push(t.id);
+      continue;
+    }
+    t.target.nikud = merged.text;
+    if (merged.matched < merged.total) res.partial++;
+    else res.done++;
   }
-  // Nikud on by default, except where it might give away the answer.
-  for (const it of exam.items) it.useNikud = it.lang === 'he' && !it.reveals && !!it.text.nikud;
-  if (rejected > 0)
-    exam.notes = [
-      ...(exam.notes ?? []),
-      `ב-${rejected} קטעים הניקוד לא נוסף, כי Claude שינה בהם מילים. הטקסט המקורי נשאר.`,
-    ];
-  return rejected;
+  return res;
+}
+
+/** After nikud: on by default, except where it might give away the answer. Adds notes for the teacher. */
+export function finishNikud(exam: Exam, partial: number, failed: number) {
+  for (const it of exam.items) it.useNikud = it.lang === 'he' && !it.reveals && itemHasNikud(it);
+  const notes: string[] = [];
+  if (partial > 0)
+    notes.push(`ב-${partial} קטעים חלק מהמילים נשארו בלי ניקוד, כי Claude כתב אותן אחרת מהמקור. אפשר ללחוץ "לנקד שוב" בשאלה.`);
+  if (failed > 0) notes.push(`${failed} קטעים נשארו בלי ניקוד. אפשר ללחוץ "לנקד שוב" בשאלה.`);
+  const flagged = exam.items.filter((it) => it.reveals && it.lang === 'he').length;
+  if (flagged > 0) notes.push(`ב-${flagged} שאלות הניקוד כבוי בכוונה, כי הן עלולות לחשוף תשובה (מסומנות בצהוב). אפשר להדליק אותו ידנית.`);
+  exam.notes = [...(exam.notes ?? []), ...notes];
 }

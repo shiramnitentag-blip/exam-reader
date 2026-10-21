@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
 import { addNikud, extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
 import { blobToBase64, fileKind, prepareImage, readDocx, type PreparedImage } from '../files';
-import { applyNikud, hebrewTexts, rawToExam } from '../importer';
+import { applyNikud, finishNikud, hebrewTexts, rawToExam } from '../importer';
 import { keepScreenOn } from '../device';
 
 type Step = { key: string; label: string; state: 'wait' | 'run' | 'done' | 'error'; detail?: string };
@@ -154,11 +154,19 @@ export function Upload({
             (p) => setStep('nikud', { detail: p.phase === 'thinking' ? 'Claude קוֹרֵא…' : `${p.found} מִתּוֹךְ ${total} קְטָעִים` }),
             ctrl.signal,
           );
-          const rejected = applyNikud(exam, result);
-          setStep('nikud', {
-            state: 'done',
-            detail: rejected ? `${total - rejected} מִתּוֹךְ ${total} קְטָעִים` : 'הַכֹּל מְנֻקָּד',
-          });
+          let r = applyNikud(exam, result);
+          let partial = r.partial;
+          // One more try for texts that came back without usable nikud.
+          if (r.failedIds.length > 0) {
+            const again = new Set(r.failedIds);
+            setStep('nikud', { detail: `מְנַסָּה שׁוּב ${again.size} קְטָעִים` });
+            const retry = await addNikud(apiKey, texts.filter((t) => again.has(t.id)), () => {}, ctrl.signal);
+            r = applyNikud(exam, retry, again);
+            partial += r.partial;
+          }
+          finishNikud(exam, partial, r.failedIds.length);
+          const ok = total - r.failedIds.length;
+          setStep('nikud', { state: 'done', detail: ok === total ? 'הַכֹּל מְנֻקָּד' : `${ok} מִתּוֹךְ ${total} קְטָעִים` });
         } else setStep('nikud', { state: 'done', detail: 'אֵין טֶקְסְט בְּעִבְרִית' });
       }
 

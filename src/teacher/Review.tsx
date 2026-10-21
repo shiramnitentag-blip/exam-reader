@@ -1,8 +1,11 @@
 // Review screen: the teacher checks and fixes everything before the student sees the exam.
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
+import { addNikud, hebrewError } from '../claude';
 import {
   itemHasNikud,
+  mergeNikud,
+  wordsWithoutNikud,
   newId,
   sameWords,
   splitNikudAt,
@@ -387,6 +390,9 @@ function TxtEditor({
             onChange={(e) => onChange({ ...value, nikud: e.target.value })}
           />
           {mismatch && <div className="warn">⚠️ הַמִּלִּים בַּגִּרְסָה הַמְּנֻקֶּדֶת שׁוֹנוֹת מֵהַמָּקוֹר. בִּדְקִי.</div>}
+          {!mismatch && wordsWithoutNikud(value.nikud) > 0 && (
+            <div className="help">{wordsWithoutNikud(value.nikud)} מִלִּים בְּלִי נִקּוּד</div>
+          )}
         </>
       )}
     </div>
@@ -451,6 +457,41 @@ function ItemCard({
   const textRef = useRef<HTMLTextAreaElement>(null);
   const [splitHint, setSplitHint] = useState(false);
   const hasNikud = itemHasNikud(item);
+  const [nikudState, setNikudState] = useState<{ busy: boolean; msg?: string; error?: boolean }>({ busy: false });
+
+  /** Asks Claude to vocalize just this question (its shared text, the question and the options). */
+  async function vocalize() {
+    const apiKey = await db.getMeta<string>('apiKey');
+    if (!apiKey) {
+      setNikudState({ busy: false, error: true, msg: 'אֵין מַפְתֵּחַ Claude. הַכְנִיסִי אוֹתוֹ בַּהַגְדָּרוֹת.' });
+      return;
+    }
+    setNikudState({ busy: true });
+    const texts: { id: string; text: string }[] = [];
+    if (item.stem) texts.push({ id: 'stem', text: item.stem.text });
+    texts.push({ id: 'text', text: item.text.text });
+    item.options.forEach((o, i) => texts.push({ id: `o${i}`, text: o.text }));
+    try {
+      const res = await addNikud(apiKey, texts.filter((t) => t.text.trim()), () => {});
+      let missing = 0;
+      const fit = (id: string, t: Txt) => {
+        const voc = res[id];
+        const m = voc ? mergeNikud(t.text, voc) : null;
+        if (!m || m.matched === 0) return t;
+        missing += m.total - m.matched;
+        return { ...t, nikud: m.text };
+      };
+      onChange((it) => {
+        if (it.stem) it.stem = fit('stem', it.stem);
+        it.text = fit('text', it.text);
+        it.options = it.options.map((o, i) => fit(`o${i}`, o));
+        it.useNikud = itemHasNikud(it);
+      });
+      setNikudState({ busy: false, msg: missing ? `נֻקַּד. ${missing} מִלִּים נִשְׁאֲרוּ בְּלִי נִקּוּד.` : 'נֻקַּד ✓' });
+    } catch (e) {
+      setNikudState({ busy: false, error: true, msg: hebrewError(e) });
+    }
+  }
   const dir = item.lang === 'en' ? 'ltr' : 'rtl';
 
   return (
@@ -511,6 +552,12 @@ function ItemCard({
           onChange={(v) => onChange((it) => (it.useNikud = v === 'on'))}
         />
         {!hasNikud && <span className="help">(אֵין נִקּוּד לַשְּׁאֵלָה הַזֹּאת)</span>}
+        {item.lang === 'he' && (
+          <button className="btn btn-small" onClick={vocalize} disabled={nikudState.busy}>
+            {nikudState.busy ? '⏳ מְנַקֶּדֶת…' : hasNikud ? '✨ לְנַקֵּד שׁוּב' : '✨ לְנַקֵּד'}
+          </button>
+        )}
+        {nikudState.msg && <span className={nikudState.error ? 'warn' : 'help'}>{nikudState.msg}</span>}
       </div>
       <div className="settings-row">
         <span className="setting-name">הַקְרָאָה:</span>

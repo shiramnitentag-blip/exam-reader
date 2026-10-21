@@ -265,7 +265,9 @@ Input: a JSON array of {"id", "text"}. Output: for every id, the same text with 
 
 Rules:
 - Add vowel marks only. Every letter, word, space, punctuation mark, number, line break and non-Hebrew text must stay exactly the same and in the same order. Do not add, remove, replace or reorder anything.
-- Do not correct spelling. Vocalize words as they are written.
+- Do not correct spelling and do not change the spelling style. Keep every letter, including the vowel letters ו and י of full spelling (כתיב מלא): vocalize "שורש" as "שׁוֹרֶשׁ" (not "שֹׁרֶשׁ"), "מילה" as "מִילָּה", "הולך" as "הוֹלֵךְ", "כותבים" as "כּוֹתְבִים".
+- Keep quote marks exactly as they are (do not change " to ״ or ' to ׳).
+- Vocalize every Hebrew word in every text, including short texts, names and words inside quotes. Do not skip any text.
 - Where a word already has nikud, keep its marks exactly as they are.
 - Return every id exactly once.`;
 
