@@ -144,25 +144,49 @@ async function fileUrl(seg: Segment): Promise<string | null> {
   }
 }
 
-function playFile(url: string, my: number): Promise<void> {
+/** Plays a file; resolves true when it played to the end (or was stopped), false if it could not play. */
+function playFile(url: string, my: number): Promise<boolean> {
   return new Promise((resolve) => {
     const p = getPlayer();
-    const done = () => {
+    let started = false;
+    const finish = (ok: boolean) => {
+      clearTimeout(watchdog);
       p.onended = null;
       p.onerror = null;
       p.onpause = null;
-      resolve();
+      p.onplaying = null;
+      resolve(ok);
     };
-    p.onended = done;
-    p.onerror = done;
+    // If the sound has not started after a few seconds, give up and use the built-in voice.
+    const watchdog = setTimeout(() => {
+      if (!started) {
+        p.pause();
+        finish(false);
+      }
+    }, 4000);
+    p.onplaying = () => {
+      started = true;
+    };
+    p.onended = () => finish(true);
+    p.onerror = () => {
+      if (my !== token) return finish(true);
+      bad.add(url);
+      finish(false);
+    };
     p.onpause = () => {
-      if (my !== token) done(); // stopped
+      if (my !== token) finish(true); // stopped
     };
     p.src = url;
+    p.defaultPlaybackRate = FILE_RATES[speed]; // Safari resets the rate when a new file loads
     p.playbackRate = FILE_RATES[speed];
-    p.play().catch(done);
+    p.play().catch(() => {
+      if (my !== token) return finish(true);
+      finish(false);
+    });
   });
 }
+let synthUnlocked = false;
+const bad = new Set<string>(); // files that failed to play: use the built-in voice for them
 
 function playSynth(seg: Segment, my: number): Promise<void> {
   return new Promise((resolve) => {
@@ -197,36 +221,58 @@ export const speech = {
   },
 
   /** Read a list of segments one after another, highlighting each. */
-  speak(segments: Segment[], opts: { builtInOnly?: boolean } = {}) {
+  speak(segments: Segment[], opts: { builtInOnly?: boolean } = {}): Promise<{ files: number; builtIn: number }> {
+    const count = { files: 0, builtIn: 0 };
+    // Without ready-made files, only the built-in voice is used (and it starts inside the tap).
+    if (!fileVoices) opts = { ...opts, builtInOnly: true };
     const wasBusy = !!synth && (synth.speaking || synth.pending);
     this.stop();
     const my = ++token;
+    // The built-in voice must also start from a tap on the iPad: say "nothing" now, so it can
+    // speak later if a file is missing.
+    if (synth && !wasBusy && !opts.builtInOnly && !synthUnlocked) {
+      synthUnlocked = true;
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      synth.speak(u);
+    }
     // Sound must start inside the tap: play the first file at once if it is already in memory,
     // otherwise unlock the player with silence first.
     const firstKey = segments[0] && !opts.builtInOnly ? fileKey(segments[0]) : null;
     const firstUrl = firstKey ? urls.get(firstKey) : undefined;
     const firstPlay = firstUrl ? (setCurrent(segments[0].id), playFile(firstUrl, my)) : null;
     const unlocked = !firstPlay && !opts.builtInOnly ? unlock() : Promise.resolve();
-    void (async () => {
+    return (async () => {
       // Safari sometimes drops an utterance that is queued right after cancel().
       if (wasBusy) await new Promise((r) => setTimeout(r, 80));
       await unlocked;
       for (const [i, seg] of segments.entries()) {
-        if (my !== token) return;
+        if (my !== token) return count;
         if (i === 0 && firstPlay) {
-          await firstPlay;
+          if (await firstPlay) {
+            count.files++;
+            continue;
+          }
+          if (my !== token) return count;
+          count.builtIn++;
+          await playSynth(seg, my);
           continue;
         }
         const url = opts.builtInOnly ? null : await fileUrl(seg);
-        if (my !== token) return;
+        if (my !== token) return count;
         setCurrent(seg.id);
-        if (url) await playFile(url, my);
-        else await playSynth(seg, my);
+        const played = url && !bad.has(url) ? await playFile(url, my) : false;
+        if (played) count.files++;
+        else if (my === token) {
+          count.builtIn++;
+          await playSynth(seg, my);
+        }
       }
       if (my === token) {
         activeUtterance = null;
         setCurrent(null);
       }
+      return count;
     })();
   },
 
@@ -241,7 +287,10 @@ export const speech = {
   getSpeed: () => speed,
   setSpeed(s: Speed) {
     speed = s;
-    if (player && !player.paused) player.playbackRate = FILE_RATES[s];
+    if (player) {
+      player.defaultPlaybackRate = FILE_RATES[s];
+      player.playbackRate = FILE_RATES[s];
+    }
     try {
       localStorage.setItem('speed', s);
     } catch {

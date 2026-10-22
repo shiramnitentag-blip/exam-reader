@@ -256,9 +256,27 @@ export const db = {
   },
 
   // ---- ready-made voice files ----
+  /**
+   * Voice files are kept as raw bytes, not as a Blob: Safari on the iPad often cannot play a Blob
+   * read back from IndexedDB. A fresh Blob is made from the bytes on every read.
+   */
   async getAudio(key: string): Promise<Blob | undefined> {
-    const row = await reqToPromise((await store('audio', 'readonly')).get(key));
-    return (row as { blob?: Blob } | undefined)?.blob;
+    const row = (await reqToPromise((await store('audio', 'readonly')).get(key))) as
+      | { bytes?: ArrayBuffer; type?: string; blob?: Blob }
+      | undefined;
+    if (!row) return undefined;
+    if (row.bytes) return new Blob([row.bytes], { type: row.type || 'audio/mpeg' });
+    if (row.blob) {
+      // saved by the first version: rewrite it as bytes
+      try {
+        const bytes = await row.blob.arrayBuffer();
+        await this.putAudio(key, new Blob([bytes], { type: row.blob.type || 'audio/mpeg' }));
+        return new Blob([bytes], { type: row.blob.type || 'audio/mpeg' });
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
   },
   async hasAudio(keys: string[]): Promise<Set<string>> {
     const d = await openDb();
@@ -280,7 +298,10 @@ export const db = {
     return found;
   },
   async putAudio(key: string, blob: Blob) {
-    await reqToPromise((await store('audio', 'readwrite')).put({ key, blob, createdAt: Date.now() }));
+    const bytes = await blob.arrayBuffer();
+    await reqToPromise(
+      (await store('audio', 'readwrite')).put({ key, bytes, type: blob.type || 'audio/mpeg', createdAt: Date.now() }),
+    );
   },
   async deleteAudio(keys: string[]) {
     const d = await openDb();

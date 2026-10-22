@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Exam } from '../model';
 import { keepScreenOn } from '../device';
 import { loadTTSSettings, providerFor, type TTSSettings } from '../tts';
-import { examJobs, missingJobs, prepareAudio, type AudioJob, type PrepareProgress } from '../tts/prepare';
+import { speech } from '../speech';
+import { examJobs, examSegments, missingJobs, prepareAudio, type AudioJob, type PrepareProgress } from '../tts/prepare';
 
 type State =
   | { kind: 'loading' }
@@ -18,6 +19,16 @@ export function PrepareAudio({ exam, onClose, onSettings }: { exam: Exam; onClos
   const [state, setState] = useState<State>({ kind: 'loading' });
   const settings = useRef<TTSSettings | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const [check1, setCheck1] = useState<'' | 'playing' | 'ok' | 'bad'>('');
+
+  /** Plays one sentence the way the student hears it, and tells which voice was used. */
+  async function testPlay() {
+    const seg = examSegments(exam).find((x) => x.text.trim().length > 15) ?? examSegments(exam)[0];
+    if (!seg) return;
+    setCheck1('playing');
+    const r = await speech.speak([seg]);
+    setCheck1(r.files > 0 ? 'ok' : 'bad');
+  }
 
   async function check() {
     const s = await loadTTSSettings();
@@ -35,6 +46,7 @@ export function PrepareAudio({ exam, onClose, onSettings }: { exam: Exam; onClos
     void check();
     return () => {
       abort.current?.abort();
+      speech.stop();
       keepScreenOn(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +143,16 @@ export function PrepareAudio({ exam, onClose, onSettings }: { exam: Exam; onClos
           <>
             <div className="notice ok big-text">✅ מוּכָן לַמִּבְחָן בְּלִי אִינְטֶרְנֶט.</div>
             <p className="help">כָּל קִבְצֵי הַקּוֹל שְׁמוּרִים בָּאַיְפֶּד.</p>
+            {check1 === 'ok' && <div className="notice ok">✅ הַקֹּבֶץ הַשָּׁמוּר הֻשְׁמַע.</div>}
+            {check1 === 'bad' && (
+              <div className="notice error">
+                ❌ הַקֹּבֶץ הַשָּׁמוּר לֹא הֻשְׁמַע, וְנִשְׁמַע הַקּוֹל הַמּוּבְנֶה שֶׁל הָאַיְפֶּד בִּמְקוֹמוֹ.
+              </div>
+            )}
             <div className="modal-actions">
+              <button className="btn btn-big" onClick={() => void testPlay()} disabled={check1 === 'playing'}>
+                {check1 === 'playing' ? '🔊 מַשְׁמִיעָה…' : '▶️ בְּדִיקַת הַשְׁמָעָה'}
+              </button>
               <button className="btn btn-primary btn-big" onClick={onClose}>
                 סְגִירָה
               </button>
