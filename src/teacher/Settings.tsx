@@ -3,6 +3,7 @@ import { db } from '../db';
 import { hebrewError, testConnection } from '../claude';
 import { PinScreen } from './PinScreen';
 import { setPin } from './pin';
+import { VoiceSettings } from './VoiceSettings';
 
 /** API key (kept only on this device) and PIN change. */
 export function Settings({ onBack }: { onBack: () => void }) {
@@ -130,6 +131,8 @@ export function Settings({ onBack }: { onBack: () => void }) {
             {status.kind === 'ok' && <div className="notice ok">✅ {status.text}</div>}
             {status.kind === 'error' && <div className="notice error">❌ {status.text}</div>}
           </div>
+
+          <VoiceSettings />
 
           <div className="card">
             <h2 className="section-title">קוֹד מוֹרָה</h2>

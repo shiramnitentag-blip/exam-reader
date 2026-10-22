@@ -1,6 +1,6 @@
 // Student mode: the exam the teacher made active, one screen per question.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mediaSegments, shown, type Exam, type Item } from '../model';
+import { mediaSegments, sayOf, shown, type Exam, type Item } from '../model';
 import { MediaList } from '../components/Media';
 import { db, emptyAnswer, ensureSession, isAnswered, type Answer, type AnswerMode } from '../db';
 import { speech, type Segment } from '../speech';
@@ -10,6 +10,7 @@ import { Recorder } from '../components/Recorder';
 import { Dictation } from '../components/Dictation';
 import { ChoiceOptions, optionSegments } from '../components/Choice';
 import { Modal } from '../components/Modal';
+import { PHRASES, questionPhrase } from './phrases';
 
 type Screen = { name: 'intro' } | { name: 'question'; index: number } | { name: 'finish' } | { name: 'done' };
 
@@ -26,9 +27,9 @@ function loadScreen(examId: string): Screen {
 /** All the sentences of an item that the voice reads, following its read mode and nikud. */
 export function itemSegments(item: Item): Segment[] {
   const out: Segment[] = [];
-  if (item.stem) out.push(...segmentsFor(shown(item.stem, item.useNikud), `${item.id}-stem`, item.lang, item.readMode));
+  if (item.stem) out.push(...segmentsFor(shown(item.stem, item.useNikud), `${item.id}-stem`, item.lang, item.readMode, sayOf(item.stem)));
   out.push(...mediaSegments(item.media, 'stem', item.lang, item.useNikud, item.readMode));
-  out.push(...segmentsFor(shown(item.text, item.useNikud), `${item.id}-text`, item.lang, item.readMode));
+  out.push(...segmentsFor(shown(item.text, item.useNikud), `${item.id}-text`, item.lang, item.readMode, sayOf(item.text)));
   out.push(...mediaSegments(item.media, 'text', item.lang, item.useNikud, item.readMode));
   if (item.kind === 'choice') optionSegments(item).forEach((s) => out.push(...s));
   return out;
@@ -196,7 +197,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
       )}
       {confirmSubmit && (
         <Modal
-          text="לְהַגִּישׁ אֶת הַמִּבְחָן? אַחֲרֵי הַהַגָּשָׁה אִי אֶפְשָׁר לְשַׁנּוֹת."
+          text={PHRASES.confirmSubmit}
           yes="כֵּן, לְהַגִּישׁ"
           no="עוֹד לֹא"
           onNo={() => setConfirmSubmit(false)}
@@ -282,6 +283,12 @@ function QuestionView({
 }) {
   const readAll = itemSegments(item);
 
+  // Load this question's voice files into memory, so reading starts right away.
+  useEffect(() => {
+    speech.preload(readAll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
   return (
     <div className={`question-layout ${item.kind}`}>
       <section className="card question-card">
@@ -294,6 +301,7 @@ function QuestionView({
           <ReadableText
             text={shown(item.stem, item.useNikud)}
             idPrefix={`${item.id}-stem`}
+            say={sayOf(item.stem)}
             lang={item.lang}
             mode={item.readMode}
             className="stem"
@@ -303,6 +311,7 @@ function QuestionView({
         <ReadableText
           text={shown(item.text, item.useNikud)}
           idPrefix={`${item.id}-text`}
+          say={sayOf(item.text)}
           lang={item.lang}
           mode={item.readMode}
           className="big-text prompt"
@@ -437,14 +446,14 @@ function FinishView({
 
   const summary: Segment[] =
     missing.length === 0
-      ? [{ id: 'sum-0', text: 'עָנִית עַל כָּל הַשְּׁאֵלוֹת.' }]
+      ? [{ id: 'sum-0', text: PHRASES.allAnswered }]
       : [
-          { id: 'sum-0', text: 'לֹא עָנִית עַל:' },
-          ...missing.map((it, i) => ({ id: `sum-m${i}`, text: `שְׁאֵלָה ${it.label}.` })),
+          { id: 'sum-0', text: PHRASES.notAnswered },
+          ...missing.map((it, i) => ({ id: `sum-m${i}`, text: questionPhrase(it.label) })),
         ];
   if (flagged.length > 0) {
-    summary.push({ id: 'sum-f', text: 'סִמַּנְתְּ לַחְזֹר אֶל:' });
-    flagged.forEach((it, i) => summary.push({ id: `sum-f${i}`, text: `שְׁאֵלָה ${it.label}.` }));
+    summary.push({ id: 'sum-f', text: PHRASES.flagged });
+    flagged.forEach((it, i) => summary.push({ id: `sum-f${i}`, text: questionPhrase(it.label) }));
   }
 
   return (
@@ -485,8 +494,8 @@ function FinishView({
 
 function DoneView() {
   const msg: Segment[] = [
-    { id: 'done-0', text: 'הַמִּבְחָן הוּגַשׁ.' },
-    { id: 'done-1', text: 'כָּל הַכָּבוֹד!' },
+    { id: 'done-0', text: PHRASES.submitted },
+    { id: 'done-1', text: PHRASES.wellDone },
   ];
   return (
     <div className="page narrow center">

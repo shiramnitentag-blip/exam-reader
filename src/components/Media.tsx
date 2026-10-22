@@ -4,6 +4,7 @@ import { db } from '../db';
 import {
   cellId,
   headerId,
+  sayOf,
   shown,
   voiceFor,
   type Lang,
@@ -92,13 +93,17 @@ export function TableView({
   const tap = (id: string, text: string) => {
     if (!canRead || !text.trim()) return;
     if (current === id) speech.stop();
-    else speech.speak(voiceFor({ id, text, lang }, mode));
+    else speech.speak(voiceFor({ id, text, lang, say: sayTexts.get(id) }, mode));
   };
+  // The vocalized version of each cell, for the voice.
+  const sayTexts = new Map<string, string>();
+  table.headers.forEach((h, c) => h.nikud && sayTexts.set(headerId(table, c), h.nikud));
+  table.rows.forEach((row, r) => row.forEach((cell, c) => cell.nikud && sayTexts.set(cellId(table, r, c), cell.nikud)));
   const caption = table.caption ? shown(table.caption, useNikud) : '';
 
   return (
     <div className="table-block">
-      {caption && <ReadableText text={caption} idPrefix={`${table.id}-cap`} lang={lang} mode={canRead ? mode : 'none'} className="table-caption" />}
+      {caption && <ReadableText text={caption} say={sayOf(table.caption)} idPrefix={`${table.id}-cap`} lang={lang} mode={canRead ? mode : 'none'} className="table-caption" />}
       <div className="table-wrap">
         <table className="exam-table" dir={lang === 'en' ? 'ltr' : 'rtl'} lang={lang}>
           {hasHeaders && (
@@ -164,7 +169,7 @@ export function Figure({
       </button>
       {caption && (
         <figcaption>
-          <ReadableText text={caption} idPrefix={`${idPrefix ?? ''}${media.id}-cap`} lang={lang} mode={mode} />
+          <ReadableText text={caption} say={sayOf(media.caption)} idPrefix={`${idPrefix ?? ''}${media.id}-cap`} lang={lang} mode={mode} />
         </figcaption>
       )}
       {open && url && <ImageViewer url={url} onClose={() => setOpen(false)} />}

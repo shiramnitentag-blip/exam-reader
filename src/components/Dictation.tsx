@@ -40,7 +40,7 @@ export function Dictation({
         <button
           className={`btn btn-read ${reading ? 'active' : ''}`}
           disabled={!hasText}
-          onClick={() => (reading ? speech.stop() : speech.speak([{ id: segId, text: answer.text, lang }]))}
+          onClick={() => (reading ? speech.stop() : speech.speak([{ id: segId, text: answer.text, lang }], { builtInOnly: true }) /* new text, no ready-made file */)}
         >
           <span className="icon" aria-hidden>
             {reading ? '⏹' : '🔊'}

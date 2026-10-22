@@ -293,9 +293,22 @@ function splitSentences(p: string): string[] {
   return out.filter(Boolean);
 }
 
-export function sentenceSegments(text: string, idPrefix: string, lang: Lang): Segment[][] {
-  return paragraphs(text).map((p, pi) => p.map((s, si) => ({ id: `${idPrefix}-${pi}-${si}`, text: s, lang })));
+/**
+ * Sentences of a text. If `say` (the vocalized version) splits into the same sentences, each
+ * sentence carries its vocalized form for the voice, so it is pronounced exactly as intended.
+ */
+export function sentenceSegments(text: string, idPrefix: string, lang: Lang, say?: string): Segment[][] {
+  const shownParas = paragraphs(text);
+  const sayParas = say && say !== text ? paragraphs(say) : null;
+  const match =
+    !!sayParas && sayParas.length === shownParas.length && sayParas.every((p, i) => p.length === shownParas[i].length);
+  return shownParas.map((p, pi) =>
+    p.map((s, si) => ({ id: `${idPrefix}-${pi}-${si}`, text: s, lang, ...(match ? { say: sayParas![pi][si] } : {}) })),
+  );
 }
+
+/** The vocalized version of a text if there is one (for the voice). */
+export const sayOf = (t: Txt | undefined) => t?.nikud ?? t?.text;
 
 // ---------- letter-by-letter spelling ----------
 
@@ -326,6 +339,7 @@ export function spellWords(sentence: string): string[] {
 export function voiceFor(seg: Segment, mode: ReadMode): Segment[] {
   if (mode === 'none') return [];
   if (mode === 'spell') {
+    // letter names are always the same, whatever the nikud
     return spellWords(seg.text).map((t) => ({ id: seg.id, text: t, lang: seg.lang }));
   }
   return [seg];
@@ -351,7 +365,7 @@ export function tableSegments(t: Table, lang: Lang, useNikud: boolean, mode: Rea
   if (mode === 'none') return [];
   const out: Segment[] = [];
   if (t.caption && shown(t.caption, useNikud).trim())
-    out.push(...sentenceSegments(shown(t.caption, useNikud), `${t.id}-cap`, lang).flat().flatMap((s) => voiceFor(s, mode)));
+    out.push(...sentenceSegments(shown(t.caption, useNikud), `${t.id}-cap`, lang, sayOf(t.caption)).flat().flatMap((s) => voiceFor(s, mode)));
   t.rows.forEach((row, r) => {
     out.push({ id: `${t.id}-r${r}`, text: rowName(r, lang), lang });
     row.forEach((cell, c) => {
@@ -359,10 +373,13 @@ export function tableSegments(t: Table, lang: Lang, useNikud: boolean, mode: Rea
       if (!value) return;
       const id = cellId(t, r, c);
       const header = shown(t.headers[c], useNikud).trim();
-      if (mode === 'normal') out.push({ id, text: header ? `${header}: ${value}.` : value, lang });
+      const sayHeader = (sayOf(t.headers[c]) ?? '').trim();
+      const sayValue = (sayOf(cell) ?? value).trim();
+      if (mode === 'normal')
+        out.push({ id, text: header ? `${header}: ${value}.` : value, lang, say: sayHeader ? `${sayHeader}: ${sayValue}.` : sayValue });
       else {
         // letter by letter: the column title is said normally, then the value is spelled
-        if (header) out.push({ id, text: `${header}:`, lang });
+        if (header) out.push({ id, text: `${header}:`, lang, say: `${sayHeader}:` });
         out.push(...voiceFor({ id, text: value, lang }, mode));
       }
     });
@@ -378,7 +395,7 @@ export function mediaSegments(media: Media[] | undefined, place: MediaPlace | 'a
     if (m.kind === 'table') out.push(...tableSegments(m.table, lang, useNikud, mode));
     else if (m.caption && mode !== 'none') {
       // Pictures are not described; only the caption under them is read, as plain text.
-      out.push(...sentenceSegments(shown(m.caption, useNikud), `${m.id}-cap`, lang).flat().flatMap((s) => voiceFor(s, mode)));
+      out.push(...sentenceSegments(shown(m.caption, useNikud), `${m.id}-cap`, lang, sayOf(m.caption)).flat().flatMap((s) => voiceFor(s, mode)));
     }
   }
   return out;

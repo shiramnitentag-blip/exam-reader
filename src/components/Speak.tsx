@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { speech, useSpeaking, useSpeed, type Segment, type Speed } from '../speech';
 import { sentenceSegments, voiceFor, type Lang, type ReadMode } from '../model';
 
@@ -92,8 +93,8 @@ export function SpeedControl() {
 }
 
 /** Everything the voice says for a text, in order, according to the read mode. */
-export function segmentsFor(text: string, idPrefix: string, lang: Lang, mode: ReadMode): Segment[] {
-  return sentenceSegments(text, idPrefix, lang)
+export function segmentsFor(text: string, idPrefix: string, lang: Lang, mode: ReadMode, say?: string): Segment[] {
+  return sentenceSegments(text, idPrefix, lang, say)
     .flat()
     .flatMap((s) => voiceFor(s, mode));
 }
@@ -105,36 +106,84 @@ export function ReadableText({
   lang,
   mode = 'normal',
   className = '',
+  say,
 }: {
   text: string;
   idPrefix: string;
   lang: Lang;
   mode?: ReadMode;
   className?: string;
+  say?: string; // the vocalized version, for the voice
 }) {
   const current = useSpeaking();
-  const paras = sentenceSegments(text, idPrefix, lang);
+  const paras = sentenceSegments(text, idPrefix, lang, say);
+  const press = useRef<{ timer: number; fired: boolean } | null>(null);
+
+  // A long press on a word reads only that word.
+  const wordDown = (seg: Segment, i: number, word: string, sayWord: string | undefined) => {
+    if (press.current) clearTimeout(press.current.timer);
+    const state = { timer: 0, fired: false };
+    state.timer = window.setTimeout(() => {
+      state.fired = true;
+      speech.speak([{ id: `${seg.id}-w${i}`, text: word, lang, say: sayWord }]);
+    }, 450);
+    press.current = state;
+  };
+  const wordUp = () => {
+    if (press.current && !press.current.fired) {
+      clearTimeout(press.current.timer);
+      press.current = null;
+    }
+  };
+
   return (
     <div className={`readable ${className}`} dir={lang === 'en' ? 'ltr' : 'rtl'} lang={lang}>
       {paras.map((p, i) => (
         <p key={i} className="speak-text">
-          {p.map((seg) =>
-            mode === 'none' ? (
-              <span key={seg.id} className="sentence plain">
-                {seg.text}
-              </span>
-            ) : (
+          {p.map((seg) => {
+            if (mode === 'none')
+              return (
+                <span key={seg.id} className="sentence plain">
+                  {seg.text}
+                </span>
+              );
+            const words = seg.text.split(/(\s+)/);
+            const sayWords = seg.say?.split(/(\s+)/);
+            const sameCount = sayWords?.length === words.length;
+            return (
               <span
                 key={seg.id}
                 role="button"
                 tabIndex={0}
                 className={`sentence${current === seg.id ? ' reading' : ''}`}
-                onClick={() => (current === seg.id ? speech.stop() : speech.speak(voiceFor(seg, mode)))}
+                onClick={() => {
+                  if (press.current?.fired) {
+                    press.current = null; // that was a long press on a word
+                    return;
+                  }
+                  if (current === seg.id) speech.stop();
+                  else speech.speak(voiceFor(seg, mode));
+                }}
               >
-                {seg.text}
+                {words.map((w, wi) =>
+                  /^\s+$/.test(w) || !w ? (
+                    w
+                  ) : (
+                    <span
+                      key={wi}
+                      className={`word${current === `${seg.id}-w${wi}` ? ' reading-word' : ''}`}
+                      onPointerDown={() => wordDown(seg, wi, w, sameCount ? sayWords![wi] : undefined)}
+                      onPointerUp={wordUp}
+                      onPointerLeave={wordUp}
+                      onPointerCancel={wordUp}
+                    >
+                      {w}
+                    </span>
+                  ),
+                )}
               </span>
-            ),
-          )}
+            );
+          })}
         </p>
       ))}
     </div>

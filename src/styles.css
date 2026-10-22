@@ -1685,3 +1685,86 @@ button {
   flex: 1;
   min-width: 220px;
 }
+
+/* ---------- long press on a word ---------- */
+.sentence {
+  -webkit-touch-callout: none;
+}
+.word.reading-word {
+  background: var(--hl-strong);
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px var(--hl-strong);
+}
+.notice.pre {
+  white-space: pre-wrap;
+}
+
+/* ---------- prepare voice files ---------- */
+.prepare-modal {
+  max-width: 680px;
+}
+.progress {
+  height: 22px;
+  border-radius: 999px;
+  background: var(--soft);
+  overflow: hidden;
+  border: 2px solid var(--border);
+}
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s;
+}
+.failed-list {
+  margin: 0;
+  padding-inline-start: 20px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 0.95rem;
+}
+.audio-status {
+  font-size: 0.9rem;
+}
+
+/* ---------- choosing another nikud for a word ---------- */
+.word-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed var(--border);
+  padding-top: 6px;
+}
+.word-picker-words {
+  line-height: 2.4;
+  font-size: 1.15rem;
+}
+.wp-word {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 8px;
+  padding: 2px 4px;
+  font-size: inherit;
+}
+.wp-word:hover,
+.wp-word.on {
+  border-color: var(--primary);
+  background: var(--soft);
+}
+.wp-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: #fff;
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+  padding: 8px;
+}
+.wp-option {
+  flex-direction: column;
+  gap: 0;
+  min-height: 56px;
+}
+.wp-option b {
+  font-size: 1.2rem;
+}

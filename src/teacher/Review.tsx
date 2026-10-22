@@ -20,6 +20,10 @@ import { itemSegments } from '../student/StudentApp';
 import { segmentsFor } from '../components/Speak';
 import { Modal } from '../components/Modal';
 import { MediaEditor } from './MediaEditor';
+import { NikudPicked, WordPicker } from './WordPicker';
+import { PrepareAudio } from './PrepareAudio';
+import { loadTTSSettings, providerFor } from '../tts';
+import { missingJobs, prepareAudio } from '../tts/prepare';
 import { CropTool, type CropResult, type CropTarget } from './CropTool';
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
@@ -41,6 +45,25 @@ export function Review({
   const [justApproved, setJustApproved] = useState(false);
   const [hasSource, setHasSource] = useState(false);
   const [cropFor, setCropFor] = useState<string | null>(null); // open crop tool, for this question/passage ('' = any)
+  const [preparing, setPreparing] = useState(false);
+  const [nikudTick, setNikudTick] = useState(0);
+  const [voiceNote, setVoiceNote] = useState('');
+
+  // After the teacher picks another nikud for a word, make that sentence's voice file again
+  // (only the few files that are now missing; a whole exam is prepared with "Prepare for exam").
+  useEffect(() => {
+    if (nikudTick === 0) return;
+    const t = window.setTimeout(async () => {
+      const tts = await loadTTSSettings();
+      if (!providerFor(tts) || !latest.current) return;
+      const missing = await missingJobs(latest.current, tts);
+      if (missing.length === 0 || missing.length > 30) return;
+      setVoiceNote('🎧 מְעַדְכֶּנֶת אֶת קֹבֶץ הַקּוֹל…');
+      const res = await prepareAudio(missing, tts, () => {});
+      setVoiceNote(res.failed.length ? '⚠️ קֹבֶץ הַקּוֹל לֹא עֻדְכַּן (אֵין אִינְטֶרְנֶט?). אֶפְשָׁר לִלְחֹץ "הֲכָנָה לַמִּבְחָן".' : '🎧 קֹבֶץ הַקּוֹל עֻדְכַּן.');
+    }, 800);
+    return () => clearTimeout(t);
+  }, [nikudTick]);
   const saveTimer = useRef<number | null>(null);
   const latest = useRef<Exam | null>(null);
 
@@ -178,6 +201,7 @@ export function Review({
   const isActive = exam.id === activeId;
 
   return (
+    <NikudPicked.Provider value={() => setNikudTick((n) => n + 1)}>
     <div className="app teacher">
       <header className="header">
         <div className="header-title">🔍 בְּדִיקַת מִבְחָן</div>
@@ -223,6 +247,10 @@ export function Review({
                 ⚠️ {n}
               </div>
             ))}
+            <button className="btn" onClick={() => setPreparing(true)}>
+              🎧 הֲכָנָה לַמִּבְחָן (קִבְצֵי קוֹל)
+            </button>
+            {voiceNote && <div className="help">{voiceNote}</div>}
             {hasSource && (
               <button className="btn" onClick={() => setCropFor('')}>
                 ✂️ תְּמוּנָה מֵהַמָּקוֹר (גְּרָף, מַפָּה, צִיּוּר)
@@ -375,6 +403,13 @@ export function Review({
           onClose={() => setCropFor(null)}
         />
       )}
+      {preparing && (
+        <PrepareAudio
+          exam={latest.current ?? exam}
+          onClose={() => setPreparing(false)}
+          onSettings={() => setPreparing(false)}
+        />
+      )}
       {confirmDelete !== null && (
         <Modal
           text={`לִמְחֹק אֶת שְׁאֵלָה ${exam.items[confirmDelete]?.label}?`}
@@ -390,6 +425,7 @@ export function Review({
         />
       )}
     </div>
+    </NikudPicked.Provider>
   );
 }
 
@@ -474,6 +510,7 @@ function TxtEditor({
           {!mismatch && wordsWithoutNikud(value.nikud) > 0 && (
             <div className="help">{wordsWithoutNikud(value.nikud)} מִלִּים בְּלִי נִקּוּד</div>
           )}
+          {!mismatch && lang === 'he' && <WordPicker vocalized={value.nikud} onChange={(nikud) => onChange({ ...value, nikud })} />}
         </>
       )}
     </div>

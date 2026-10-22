@@ -32,7 +32,7 @@ export type Recording = {
 };
 
 const DB_NAME = 'exam-reader';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -109,6 +109,10 @@ function upgrade(db: IDBDatabase, tx: IDBTransaction, oldVersion: number) {
     const images = db.createObjectStore('images', { keyPath: 'id' });
     images.createIndex('byExam', 'examId');
     db.createObjectStore('sources', { keyPath: 'examId' });
+  }
+  if (oldVersion < 4) {
+    // Ready-made voice files: one per sentence/option/cell, keyed by "voice|text".
+    db.createObjectStore('audio', { keyPath: 'key' });
   }
 }
 
@@ -249,6 +253,40 @@ export const db = {
   },
   async getSource(examId: string): Promise<Source | undefined> {
     return reqToPromise((await store('sources', 'readonly')).get(examId));
+  },
+
+  // ---- ready-made voice files ----
+  async getAudio(key: string): Promise<Blob | undefined> {
+    const row = await reqToPromise((await store('audio', 'readonly')).get(key));
+    return (row as { blob?: Blob } | undefined)?.blob;
+  },
+  async hasAudio(keys: string[]): Promise<Set<string>> {
+    const d = await openDb();
+    const s = d.transaction('audio', 'readonly').objectStore('audio');
+    const found = new Set<string>();
+    await Promise.all(
+      keys.map(
+        (k) =>
+          new Promise<void>((resolve) => {
+            const r = s.getKey(k);
+            r.onsuccess = () => {
+              if (r.result !== undefined) found.add(k);
+              resolve();
+            };
+            r.onerror = () => resolve();
+          }),
+      ),
+    );
+    return found;
+  },
+  async putAudio(key: string, blob: Blob) {
+    await reqToPromise((await store('audio', 'readwrite')).put({ key, blob, createdAt: Date.now() }));
+  },
+  async deleteAudio(keys: string[]) {
+    const d = await openDb();
+    const tx = d.transaction('audio', 'readwrite');
+    for (const k of keys) tx.objectStore('audio').delete(k);
+    await txDone(tx);
   },
 
   // ---- recordings ----

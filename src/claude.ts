@@ -375,3 +375,52 @@ export async function addNikud(
   res.items.forEach((x) => (out[x.id] = x.nikud));
   return out;
 }
+
+// ---------- 3. other ways to vocalize one word ----------
+
+const OPTIONS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['options'],
+  properties: {
+    options: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nikud', 'meaning'],
+        properties: { nikud: STR, meaning: STR },
+      },
+    },
+  },
+};
+
+/**
+ * The possible vocalizations of one word (the one that fits the sentence first), each with a short
+ * Hebrew hint of its meaning, so the teacher can pick another one.
+ */
+export async function nikudOptions(apiKey: string, word: string, sentence: string): Promise<{ nikud: string; meaning: string }[]> {
+  const res = await client(apiKey).beta.messages.create({
+    ...FALLBACK,
+    model: MODEL,
+    max_tokens: 4000,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: OPTIONS_SCHEMA } },
+    system:
+      'You help a teacher choose the Hebrew nikud (vowel points) of one word in an exam for a student with dyslexia. ' +
+      'List the different ways this word can be vocalized as written (keep every letter as it is, add only vowel marks, dagesh and shin/sin dots). ' +
+      'Put the vocalization that fits the sentence first. Give 2 to 6 options that are real Hebrew words or forms. ' +
+      'meaning: a very short Hebrew hint (2-5 words) of what each option means, e.g. "סֵפֶר – ספר לקריאה".',
+    messages: [
+      {
+        role: 'user',
+        content: `The sentence: ${sentence}\nThe word: ${word}`,
+      },
+    ],
+  });
+  if (res.stop_reason === 'refusal') throw new ClaudeError('Claude לֹא הֶחֱזִיר אֶפְשָׁרֻיּוֹת.');
+  const text = res.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+  return (JSON.parse(text) as { options: { nikud: string; meaning: string }[] }).options;
+}

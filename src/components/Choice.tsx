@@ -1,4 +1,4 @@
-import { OPTION_LETTERS, shown, stripNikud, voiceFor, type Item } from '../model';
+import { OPTION_LETTERS, sayOf, shown, stripNikud, voiceFor, type Item } from '../model';
 import { speech, useSpeaking, type Segment } from '../speech';
 import type { Answer } from '../db';
 
@@ -15,7 +15,7 @@ export function optionSegments(item: Item): Segment[][] {
         ...voiceFor({ id, text: stripNikud(text), lang: item.lang }, 'spell'),
       ];
     }
-    return voiceFor({ id, text: `${letters[i]}. ${text}`, lang: item.lang }, item.readMode);
+    return voiceFor({ id, text: `${letters[i]}. ${text}`, lang: item.lang, say: `${letters[i]}. ${sayOf(o)}` }, item.readMode);
   });
 }
 

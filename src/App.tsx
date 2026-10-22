@@ -7,6 +7,7 @@ import { StudentApp, Header } from './student/StudentApp';
 import { PinScreen } from './teacher/PinScreen';
 import { TeacherApp, getActiveExamId } from './teacher/TeacherApp';
 import { speech } from './speech';
+import { loadTTSSettings } from './tts';
 
 type Mode = 'student' | 'pin' | 'teacher';
 
@@ -23,6 +24,10 @@ export default function App() {
   const [exam, setExam] = useState<Exam | null | undefined>(undefined);
 
   const refresh = useCallback(() => {
+    // Which voices the ready-made files were made with (set by the teacher).
+    loadTTSSettings()
+      .then((t) => speech.setFileVoices({ he: t.voiceHe, en: t.voiceEn }))
+      .catch(() => {});
     loadActiveExam()
       .then(setExam)
       .catch(() => setExam(sampleExam)); // storage not available: at least the sample works

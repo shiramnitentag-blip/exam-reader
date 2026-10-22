@@ -8,6 +8,9 @@ import { Settings } from './Settings';
 import { Upload } from './Upload';
 import { Review } from './Review';
 import { AnswersDetail, AnswersList } from './Answers';
+import { PrepareAudio } from './PrepareAudio';
+import { loadTTSSettings, providerFor } from '../tts';
+import { missingJobs } from '../tts/prepare';
 
 type View =
   | { name: 'home' }
@@ -28,12 +31,20 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
   const [hasKey, setHasKey] = useState(true);
   const [confirm, setConfirm] = useState<null | { text: string; yes: string; action: () => Promise<void> }>(null);
   const [message, setMessage] = useState('');
+  const [preparing, setPreparing] = useState<Exam | null>(null);
+  // For each exam: how many voice files are missing (null = voice service not set up).
+  const [audio, setAudio] = useState<Record<string, number | null>>({});
 
   const reload = useCallback(async () => {
     const [list, active, key] = await Promise.all([db.listExams(), getActiveExamId(), db.getMeta<string>('apiKey')]);
-    setExams([sampleExam, ...list]);
+    const all = [sampleExam, ...list];
+    setExams(all);
     setActiveId(active);
     setHasKey(!!key);
+    const tts = await loadTTSSettings();
+    const status: Record<string, number | null> = {};
+    for (const ex of all) status[ex.id] = providerFor(tts) ? (await missingJobs(ex, tts)).length : null;
+    setAudio(status);
   }, []);
 
   useEffect(() => {
@@ -124,7 +135,15 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
                     {ex.items.length} שְׁאֵלוֹת
                     {ex.builtin ? ' · מִבְחָן לְדֻגְמָה' : ` · ${new Date(ex.createdAt).toLocaleDateString('he-IL')}`}
                   </div>
+                  {audio[ex.id] !== undefined && audio[ex.id] !== null && (
+                    <div className="audio-status">
+                      {audio[ex.id] === 0 ? '🎧 מוּכָן לַמִּבְחָן בְּלִי אִינְטֶרְנֶט' : `🎧 חֲסֵרִים ${audio[ex.id]} קִבְצֵי קוֹל`}
+                    </div>
+                  )}
                   <div className="exam-card-actions">
+                    <button className="btn btn-small" onClick={() => setPreparing(ex)}>
+                      🎧 הֲכָנָה לַמִּבְחָן
+                    </button>
                     {!ex.builtin && (
                       <button className="btn btn-small" onClick={() => setView({ name: 'review', examId: ex.id })}>
                         🔍 בְּדִיקָה וַעֲרִיכָה
@@ -180,6 +199,19 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
           </div>
         </div>
       </main>
+      {preparing && (
+        <PrepareAudio
+          exam={preparing}
+          onClose={() => {
+            setPreparing(null);
+            void reload();
+          }}
+          onSettings={() => {
+            setPreparing(null);
+            setView({ name: 'settings' });
+          }}
+        />
+      )}
       {confirm && (
         <Modal
           text={confirm.text}
