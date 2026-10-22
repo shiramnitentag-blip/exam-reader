@@ -15,6 +15,12 @@ export type Answer = {
   updatedAt: number;
 };
 
+/** A picture in an exam (a graph, map, cartoon or photo), kept on the device. */
+export type StoredImage = { id: string; examId: string; blob: Blob; width: number; height: number };
+
+/** The file the exam was made from: a PDF, or page pictures (photos, or pictures from a Word file). */
+export type Source = { examId: string; pdf?: Blob; pages?: Blob[] };
+
 export type Recording = {
   id: string;
   examId?: string;
@@ -26,7 +32,7 @@ export type Recording = {
 };
 
 const DB_NAME = 'exam-reader';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -98,6 +104,12 @@ function upgrade(db: IDBDatabase, tx: IDBTransaction, oldVersion: number) {
       if (req.result) meta.put({ key: 'submitted:sample', value: req.result.value });
     };
   }
+  if (oldVersion < 3) {
+    // Pictures in exams, and the teacher's source files (to cut pictures out of later).
+    const images = db.createObjectStore('images', { keyPath: 'id' });
+    images.createIndex('byExam', 'examId');
+    db.createObjectStore('sources', { keyPath: 'examId' });
+  }
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -159,6 +171,8 @@ export const db = {
   },
   async deleteExam(id: string) {
     await reqToPromise((await store('exams', 'readwrite')).delete(id));
+    await this.deleteImagesOf(id);
+    await reqToPromise((await store('sources', 'readwrite')).delete(id));
     await this.deleteExamData(id);
   },
 
@@ -207,6 +221,34 @@ export const db = {
     for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`]) tx.objectStore('meta').delete(k);
     await txDone(tx);
     return recIds.length;
+  },
+
+  // ---- pictures and source files ----
+  async putImage(img: StoredImage) {
+    await reqToPromise((await store('images', 'readwrite')).put(img));
+  },
+  async getImage(id: string): Promise<StoredImage | undefined> {
+    return reqToPromise((await store('images', 'readonly')).get(id));
+  },
+  async deleteImage(id: string) {
+    await reqToPromise((await store('images', 'readwrite')).delete(id));
+  },
+  async deleteImagesOf(examId: string) {
+    const d = await openDb();
+    const tx = d.transaction('images', 'readwrite');
+    tx.objectStore('images').index('byExam').openCursor(examId).onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (!cursor) return;
+      cursor.delete();
+      cursor.continue();
+    };
+    await txDone(tx);
+  },
+  async putSource(src: Source) {
+    await reqToPromise((await store('sources', 'readwrite')).put(src));
+  },
+  async getSource(examId: string): Promise<Source | undefined> {
+    return reqToPromise((await store('sources', 'readonly')).get(examId));
   },
 
   // ---- recordings ----

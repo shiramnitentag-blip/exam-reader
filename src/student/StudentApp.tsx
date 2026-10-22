@@ -1,6 +1,7 @@
 // Student mode: the exam the teacher made active, one screen per question.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { shown, type Exam, type Item } from '../model';
+import { mediaSegments, shown, type Exam, type Item } from '../model';
+import { MediaList } from '../components/Media';
 import { db, emptyAnswer, ensureSession, isAnswered, type Answer, type AnswerMode } from '../db';
 import { speech, type Segment } from '../speech';
 import { keepScreenOn, requestPersistentStorage } from '../device';
@@ -26,7 +27,9 @@ function loadScreen(examId: string): Screen {
 export function itemSegments(item: Item): Segment[] {
   const out: Segment[] = [];
   if (item.stem) out.push(...segmentsFor(shown(item.stem, item.useNikud), `${item.id}-stem`, item.lang, item.readMode));
+  out.push(...mediaSegments(item.media, 'stem', item.lang, item.useNikud, item.readMode));
   out.push(...segmentsFor(shown(item.text, item.useNikud), `${item.id}-text`, item.lang, item.readMode));
+  out.push(...mediaSegments(item.media, 'text', item.lang, item.useNikud, item.readMode));
   if (item.kind === 'choice') optionSegments(item).forEach((s) => out.push(...s));
   return out;
 }
@@ -243,7 +246,11 @@ function PassageView({ exam, passageId, onBack }: { exam: Exam; passageId: strin
   const p = exam.passages.find((x) => x.id === passageId)!;
   const title = shown(p.title, true);
   const body = shown(p.body, true);
-  const segs = [...segmentsFor(title, `${p.id}-title`, p.lang, 'normal'), ...segmentsFor(body, `${p.id}-body`, p.lang, 'normal')];
+  const segs = [
+    ...segmentsFor(title, `${p.id}-title`, p.lang, 'normal'),
+    ...segmentsFor(body, `${p.id}-body`, p.lang, 'normal'),
+    ...mediaSegments(p.media, 'all', p.lang, true, 'normal'),
+  ];
   return (
     <div className="page narrow">
       <button className="btn btn-back" onClick={onBack}>
@@ -252,6 +259,7 @@ function PassageView({ exam, passageId, onBack }: { exam: Exam; passageId: strin
       <div className="card passage">
         {title && <ReadableText text={title} idPrefix={`${p.id}-title`} lang={p.lang} className="passage-title" />}
         <ReadableText text={body} idPrefix={`${p.id}-body`} lang={p.lang} className="big-text" />
+        <MediaList media={p.media} place="all" lang={p.lang} useNikud mode="normal" />
         <ReadButton segments={segs} className="wide" />
       </div>
       <button className="btn btn-back" onClick={onBack}>
@@ -291,6 +299,7 @@ function QuestionView({
             className="stem"
           />
         )}
+        <MediaList media={item.media} place="stem" lang={item.lang} useNikud={item.useNikud} mode={item.readMode} />
         <ReadableText
           text={shown(item.text, item.useNikud)}
           idPrefix={`${item.id}-text`}
@@ -298,6 +307,7 @@ function QuestionView({
           mode={item.readMode}
           className="big-text prompt"
         />
+        <MediaList media={item.media} place="text" lang={item.lang} useNikud={item.useNikud} mode={item.readMode} />
         <ReadButton
           segments={readAll}
           label={item.kind === 'choice' ? 'הַקְרִיאִי הַכֹּל' : 'הַקְרִיאִי'}

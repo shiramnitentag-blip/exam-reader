@@ -93,6 +93,8 @@ async function streamJson<T>(
 
 // ---------- 1. reading the exam ----------
 
+export type RawTable = { caption: string; headers: string[]; rows: string[][] };
+export type RawFigure = { image: number; caption: string };
 export type RawSub = {
   letter: string;
   type: 'open' | 'choice';
@@ -101,6 +103,8 @@ export type RawSub = {
   options: string[];
   reveals_answer: boolean;
   reveal_reason: string;
+  tables: RawTable[];
+  figures: RawFigure[];
 };
 export type RawQuestion = Omit<RawSub, 'letter'> & {
   number: string;
@@ -110,13 +114,33 @@ export type RawQuestion = Omit<RawSub, 'letter'> & {
 export type RawExam = {
   title: string;
   instructions: { text: string; lang: Lang }[];
-  passages: { id: string; title: string; text: string; lang: Lang }[];
+  passages: { id: string; title: string; text: string; lang: Lang; tables: RawTable[]; figures: RawFigure[] }[];
   questions: RawQuestion[];
 };
 
 const LANG = { type: 'string', enum: ['he', 'en'] };
 const STR = { type: 'string' };
+const TABLES = {
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['caption', 'headers', 'rows'],
+    properties: { caption: STR, headers: { type: 'array', items: STR }, rows: { type: 'array', items: { type: 'array', items: STR } } },
+  },
+};
+const FIGURES = {
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['image', 'caption'],
+    properties: { image: { type: 'integer' }, caption: STR },
+  },
+};
 const SUB_PROPS = {
+  tables: TABLES,
+  figures: FIGURES,
   type: { type: 'string', enum: ['open', 'choice'] },
   text: STR,
   lang: LANG,
@@ -139,8 +163,8 @@ const EXAM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'title', 'text', 'lang'],
-        properties: { id: STR, title: STR, text: STR, lang: LANG },
+        required: ['id', 'title', 'text', 'lang', 'tables', 'figures'],
+        properties: { id: STR, title: STR, text: STR, lang: LANG, tables: TABLES, figures: FIGURES },
       },
     },
     questions: {
@@ -187,7 +211,9 @@ How to fill the fields:
   - lang: "he" or "en", by the language the item is written in.
 - Keep point values such as "(10 נקודות)" in the text, as written.
 - Leave out lines or boxes for writing answers, page numbers, headers and footers, and logos.
-- If a question contains a table, copy its contents as text, row by row. If it contains a picture or diagram, write [איור] where it appears.
+- Tables: put every table in "tables" of the item it belongs to (a passage, a question, or a sub-question), not in the text. headers: the column titles; rows: one array per row, one string per cell, word for word, in the same order as the columns ("" for an empty cell). If the table has no row of column titles, headers is an array of "" (one per column). caption: a title or a note written right above or below the table ("" if none). Do not copy the table's content into text as well.
+- Pictures (a graph, map, cartoon, drawing, diagram or photo): add an entry to "figures" of the item it belongs to. caption: text written right under or above the picture in the source, word for word (for example "מקור: ..."), or "" if none. Do not describe the picture and do not write [איור] in the text. image: the picture number n from an [IMAGE n] mark if the exam came from a Word file, otherwise 0.
+- Text that is part of a picture (labels on a graph, words in a cartoon) is not copied anywhere; the student will see the picture itself.
 
 Questions where reading aloud or nikud could give away the answer:
 Set reveals_answer to true when hearing the text read aloud, or seeing it with nikud, would help answer the question. Typical cases are Hebrew language (לשון) questions: adding nikud (נקדי / ניקוד), identifying a binyan (מה הבניין / באיזה בניין), finding a root (מצאי שורש / מה השורש), identifying a mishkal, tense, person, gender or number from the form of a word, spelling (כתיב), and questions about how a word is pronounced. Also English questions about spelling or pronunciation. reveal_reason: a short explanation in Hebrew, e.g. "שאלת שורש: הקראה עם ניקוד תחשוף את התשובה". Otherwise reveals_answer is false and reveal_reason is "".`;
@@ -217,7 +243,9 @@ export async function extractExam(
           'Teachers often paste exam text as a picture (a reading passage, a question, a table, answer options). ' +
           'Read every picture carefully. If a picture contains exam text, copy that text word for word into the place where the picture appears, ' +
           'exactly as if it had been typed there, following all the rules above. ' +
-          'If a picture is only a logo or decoration, ignore it. If it is a drawing or diagram without exam text, write [איור] where it appears. ' +
+          'If a picture is only a logo or decoration, ignore it. ' +
+          'If it is a graph, map, cartoon, drawing, diagram or photo, list it in "figures" of the item it belongs to, with image = n. ' +
+          'If a picture is a table, put it in "tables" with its cells copied word for word. ' +
           'Never write the [IMAGE n] marks themselves in the output.',
       });
       input.images.forEach((img, i) => {

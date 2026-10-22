@@ -19,6 +19,8 @@ import { speech, useSpeaking } from '../speech';
 import { itemSegments } from '../student/StudentApp';
 import { segmentsFor } from '../components/Speak';
 import { Modal } from '../components/Modal';
+import { MediaEditor } from './MediaEditor';
+import { CropTool, type CropResult, type CropTarget } from './CropTool';
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
@@ -37,10 +39,15 @@ export function Review({
   const [problems, setProblems] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [justApproved, setJustApproved] = useState(false);
+  const [hasSource, setHasSource] = useState(false);
+  const [cropFor, setCropFor] = useState<string | null>(null); // open crop tool, for this question/passage ('' = any)
   const saveTimer = useRef<number | null>(null);
   const latest = useRef<Exam | null>(null);
 
   useEffect(() => {
+    db.getSource(examId)
+      .then((src) => setHasSource(!!(src?.pdf || src?.pages?.length)))
+      .catch(() => {});
     db.getExam(examId).then((e) => {
       if (e) {
         latest.current = e;
@@ -106,7 +113,14 @@ export function Review({
         }
       }
       const first: Item = { ...clone(it), text: { text: a, nikud: na }, options: [], kind: 'open' };
-      const second: Item = { ...clone(it), id: newId(), label: `${it.label}-2`, text: { text: b, nikud: nb } };
+      const second: Item = {
+        ...clone(it),
+        id: newId(),
+        label: `${it.label}-2`,
+        text: { text: b, nikud: nb },
+        media: undefined, // tables and pictures stay with the first part
+        missingFigures: undefined,
+      };
       e.items.splice(i, 1, first, second);
     });
   }
@@ -126,6 +140,10 @@ export function Review({
         revealReason: a.revealReason || b.revealReason,
         stem: a.stem ?? b.stem,
         sourceWarning: a.sourceWarning || b.sourceWarning,
+        media: [...(a.media ?? []), ...(b.media ?? [])],
+        missingFigures: [...(a.missingFigures ?? []), ...(b.missingFigures ?? [])].length
+          ? [...(a.missingFigures ?? []), ...(b.missingFigures ?? [])]
+          : undefined,
       };
       merged.useNikud = merged.useNikud && !!merged.text.nikud;
       e.items.splice(i, 2, merged);
@@ -205,6 +223,11 @@ export function Review({
                 ⚠️ {n}
               </div>
             ))}
+            {hasSource && (
+              <button className="btn" onClick={() => setCropFor('')}>
+                ✂️ תְּמוּנָה מֵהַמָּקוֹר (גְּרָף, מַפָּה, צִיּוּר)
+              </button>
+            )}
           </div>
 
           {exam.instructions.length > 0 && (
@@ -245,6 +268,17 @@ export function Review({
                   </div>
                   <TxtEditor label="כּוֹתֶרֶת" value={p.title} lang={p.lang} onChange={(t) => change((e) => (e.passages[pi].title = t))} />
                   <TxtEditor label="הַקֶּטַע" value={p.body} lang={p.lang} big onChange={(t) => change((e) => (e.passages[pi].body = t))} />
+                  <MediaEditor
+                    examId={exam.id}
+                    media={p.media ?? []}
+                    lang={p.lang}
+                    hasStem={false}
+                    missing={p.missingFigures}
+                    canCrop={hasSource}
+                    onChange={(m) => change((e) => (e.passages[pi].media = m))}
+                    onMissingChange={(m) => change((e) => (e.passages[pi].missingFigures = m))}
+                    onCrop={() => setCropFor(p.id)}
+                  />
                 </div>
               ))}
             </section>
@@ -264,6 +298,9 @@ export function Review({
                 onSplit={(pos) => split(i, pos)}
                 onMergeNext={() => mergeNext(i)}
                 onDelete={() => setConfirmDelete(i)}
+                examId={exam.id}
+                canCrop={hasSource}
+                onCrop={() => setCropFor(it.id)}
               />
             ))}
           </section>
@@ -294,6 +331,50 @@ export function Review({
           </div>
         </div>
       </main>
+      {cropFor !== null && (
+        <CropTool
+          examId={exam.id}
+          initialTarget={cropFor || undefined}
+          targets={[
+            ...exam.items.map(
+              (it): CropTarget => ({
+                kind: 'item',
+                id: it.id,
+                label: `שְׁאֵלָה ${it.label}`,
+                hasStem: !!it.stem,
+                caption: it.missingFigures?.[0],
+              }),
+            ),
+            ...exam.passages.map(
+              (p, pi): CropTarget => ({
+                kind: 'passage',
+                id: p.id,
+                label: `קֶטַע: ${p.title.text || pi + 1}`,
+                hasStem: false,
+                caption: p.missingFigures?.[0],
+              }),
+            ),
+          ]}
+          onSave={async (r: CropResult) => {
+            const imageId = newId();
+            await db.putImage({ id: imageId, examId: exam.id, blob: r.blob, width: r.width, height: r.height });
+            change((e) => {
+              const owner = r.target.kind === 'item' ? e.items.find((x) => x.id === r.target.id) : e.passages.find((x) => x.id === r.target.id);
+              if (!owner) return;
+              owner.media = [
+                ...(owner.media ?? []),
+                { kind: 'image', id: newId(), place: r.place, imageId, caption: r.caption ? { text: r.caption } : undefined },
+              ];
+              // One picture Claude saw there is now in place.
+              if (owner.missingFigures?.length) {
+                const rest = owner.missingFigures.slice(1);
+                owner.missingFigures = rest.length ? rest : undefined;
+              }
+            });
+          }}
+          onClose={() => setCropFor(null)}
+        />
+      )}
       {confirmDelete !== null && (
         <Modal
           text={`לִמְחֹק אֶת שְׁאֵלָה ${exam.items[confirmDelete]?.label}?`}
@@ -443,6 +524,9 @@ function ItemCard({
   onSplit,
   onMergeNext,
   onDelete,
+  examId,
+  canCrop,
+  onCrop,
 }: {
   item: Item;
   index: number;
@@ -453,6 +537,9 @@ function ItemCard({
   onSplit: (pos: number) => void;
   onMergeNext: () => void;
   onDelete: () => void;
+  examId: string;
+  canCrop: boolean;
+  onCrop: () => void;
 }) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const [splitHint, setSplitHint] = useState(false);
@@ -609,6 +696,18 @@ function ItemCard({
           </button>
         </div>
       )}
+
+      <MediaEditor
+        examId={examId}
+        media={item.media ?? []}
+        lang={item.lang}
+        hasStem={!!item.stem}
+        missing={item.missingFigures}
+        canCrop={canCrop}
+        onChange={(m) => onChange((it) => (it.media = m))}
+        onMissingChange={(m) => onChange((it) => (it.missingFigures = m))}
+        onCrop={onCrop}
+      />
 
       {splitHint && <div className="help">שִׂימִי אֶת הַסַּמָּן בְּתוֹךְ הַשְּׁאֵלָה, בַּמָּקוֹם שֶׁבּוֹ לַחְתֹּךְ, וּלְחָצִי שׁוּב עַל "פִּצּוּל".</div>}
       <div className="card-actions">

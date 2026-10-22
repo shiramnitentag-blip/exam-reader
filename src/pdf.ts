@@ -1,7 +1,7 @@
 // A real PDF file of the answers, made on the iPad without internet.
 // Each A4 page is drawn by the browser (so Hebrew, nikud and right-to-left come out exactly
 // as on screen) and the pages are packed into a small PDF.
-import { formatDate, optionLetter, recordingLine, statusText, type Report } from './report';
+import { formatDate, mediaLines, optionLetter, recordingLine, statusText, type Report } from './report';
 import { baseFileName } from './export';
 
 const PAGE_W = 595; // A4 in points
@@ -147,6 +147,7 @@ function draw(r: Report): HTMLCanvasElement[] {
     p.text(`שאלה ${item.label}`, { size: 14, bold: true, gapAfter: 2 });
     if (item.stem?.text.trim()) p.text(item.stem.text, { size: 11.5, color: '#555' }, rtl);
     p.text(item.text.text, { size: 12 }, rtl);
+    for (const line of mediaLines(item)) p.text(line, { size: 11.5, color: '#333' }, rtl, 12);
     if (item.kind === 'choice') {
       item.options.forEach((o, i) => {
         const chosen = answer?.choice === i;

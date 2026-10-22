@@ -10,7 +10,24 @@ export type Txt = { text: string; nikud?: string };
 
 export type Block = { id: string; text: Txt; lang: Lang };
 
-export type Passage = { id: string; title: Txt; body: Txt; lang: Lang };
+/** A table from the exam: column titles and rows, each cell word for word. */
+export type Table = { id: string; caption?: Txt; headers: Txt[]; rows: Txt[][] };
+
+/** Where a table or picture appears: after the shared text (stem) or after the question itself. */
+export type MediaPlace = 'stem' | 'text';
+
+export type Media =
+  | { kind: 'table'; id: string; place: MediaPlace; table: Table }
+  | {
+      kind: 'image';
+      id: string;
+      place: MediaPlace;
+      imageId?: string; // a picture saved on the device (IndexedDB)
+      src?: string; // a picture that ships with the app (the sample exam)
+      caption?: Txt; // text under the picture in the source, e.g. "מקור: ..." (read aloud)
+    };
+
+export type Passage = { id: string; title: Txt; body: Txt; lang: Lang; media?: Media[]; missingFigures?: string[] };
 
 /** One screen for the student: a question, or one sub-question (1א, 1ב…). */
 export type Item = {
@@ -27,6 +44,8 @@ export type Item = {
   useNikud: boolean;
   readMode: ReadMode;
   sourceWarning?: boolean; // the text was not found word-for-word in the Word file
+  media?: Media[]; // tables and pictures, in order
+  missingFigures?: string[]; // pictures Claude saw in a PDF/photo (their captions), not yet cut out
 };
 
 export type Exam = {
@@ -202,8 +221,31 @@ export function shown(t: Txt | undefined, useNikud: boolean): string {
   return useNikud && t.nikud ? t.nikud : t.text;
 }
 
+/** Every piece of text in a list of tables and pictures. */
+export function mediaTexts(media: Media[] | undefined): Txt[] {
+  const out: Txt[] = [];
+  for (const m of media ?? []) {
+    if (m.kind === 'image') {
+      if (m.caption) out.push(m.caption);
+    } else {
+      if (m.table.caption) out.push(m.table.caption);
+      out.push(...m.table.headers, ...m.table.rows.flat());
+    }
+  }
+  return out;
+}
+
 export function itemHasNikud(item: Item): boolean {
-  return !!(item.text.nikud || item.stem?.nikud || item.options.some((o) => o.nikud));
+  return !!(
+    item.text.nikud ||
+    item.stem?.nikud ||
+    item.options.some((o) => o.nikud) ||
+    mediaTexts(item.media).some((t) => t.nikud)
+  );
+}
+
+export function newTable(): Table {
+  return { id: newId(), headers: [{ text: '' }, { text: '' }], rows: [[{ text: '' }, { text: '' }]] };
 }
 
 /** Split a vocalized text at the position matching `pos` in the original (counting letters only). */
@@ -287,4 +329,57 @@ export function voiceFor(seg: Segment, mode: ReadMode): Segment[] {
     return spellWords(seg.text).map((t) => ({ id: seg.id, text: t, lang: seg.lang }));
   }
   return [seg];
+}
+
+// ---------- reading tables and pictures aloud ----------
+
+const HE_ORDINALS = ['רִאשׁוֹנָה', 'שְׁנִיָּה', 'שְׁלִישִׁית', 'רְבִיעִית', 'חֲמִישִׁית', 'שִׁשִּׁית', 'שְׁבִיעִית', 'שְׁמִינִית', 'תְּשִׁיעִית', 'עֲשִׂירִית'];
+
+export function rowName(i: number, lang: Lang): string {
+  if (lang === 'en') return `Row ${i + 1}.`;
+  return HE_ORDINALS[i] ? `שׁוּרָה ${HE_ORDINALS[i]}.` : `שׁוּרָה ${i + 1}.`;
+}
+
+export const cellId = (t: Table, r: number, c: number) => `${t.id}-r${r}-c${c}`;
+export const headerId = (t: Table, c: number) => `${t.id}-h${c}`;
+
+/**
+ * A table is read row by row, with the column title before each value:
+ * "שורה ראשונה. שנה: 1948. אירוע: ...".
+ */
+export function tableSegments(t: Table, lang: Lang, useNikud: boolean, mode: ReadMode): Segment[] {
+  if (mode === 'none') return [];
+  const out: Segment[] = [];
+  if (t.caption && shown(t.caption, useNikud).trim())
+    out.push(...sentenceSegments(shown(t.caption, useNikud), `${t.id}-cap`, lang).flat().flatMap((s) => voiceFor(s, mode)));
+  t.rows.forEach((row, r) => {
+    out.push({ id: `${t.id}-r${r}`, text: rowName(r, lang), lang });
+    row.forEach((cell, c) => {
+      const value = shown(cell, useNikud).trim();
+      if (!value) return;
+      const id = cellId(t, r, c);
+      const header = shown(t.headers[c], useNikud).trim();
+      if (mode === 'normal') out.push({ id, text: header ? `${header}: ${value}.` : value, lang });
+      else {
+        // letter by letter: the column title is said normally, then the value is spelled
+        if (header) out.push({ id, text: `${header}:`, lang });
+        out.push(...voiceFor({ id, text: value, lang }, mode));
+      }
+    });
+  });
+  return out;
+}
+
+/** What the voice says for the tables and picture captions in one place of a question. */
+export function mediaSegments(media: Media[] | undefined, place: MediaPlace | 'all', lang: Lang, useNikud: boolean, mode: ReadMode): Segment[] {
+  const out: Segment[] = [];
+  for (const m of media ?? []) {
+    if (place !== 'all' && m.place !== place) continue;
+    if (m.kind === 'table') out.push(...tableSegments(m.table, lang, useNikud, mode));
+    else if (m.caption && mode !== 'none') {
+      // Pictures are not described; only the caption under them is read, as plain text.
+      out.push(...sentenceSegments(shown(m.caption, useNikud), `${m.id}-cap`, lang).flat().flatMap((s) => voiceFor(s, mode)));
+    }
+  }
+  return out;
 }

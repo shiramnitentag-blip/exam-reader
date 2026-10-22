@@ -7,6 +7,7 @@ import {
   formatDate,
   formatDuration,
   loadReport,
+  mediaLines,
   optionLetter,
   recordingLine,
   statusText,
@@ -17,6 +18,7 @@ import {
 import { buildDocx, buildRecordingsZip, deliver } from '../export';
 import { buildPdf } from '../pdf';
 import { speech } from '../speech';
+import { MediaList } from '../components/Media';
 
 export function AnswersList({ onBack, onOpen }: { onBack: () => void; onOpen: (examId: string) => void }) {
   const [list, setList] = useState<Summary[] | null>(null);
@@ -292,6 +294,7 @@ function AnswerCard({ ri, urls }: { ri: ReportItem; urls: Record<string, string>
           <p key={i}>{l}</p>
         ))}
       </div>
+      <MediaList media={item.media} place="all" lang={item.lang} useNikud={false} mode="none" />
       {item.kind === 'choice' && (
         <ol className="answer-options" dir={dir}>
           {item.options.map((o, i) => (
@@ -345,6 +348,11 @@ function PrintSheet({ report }: { report: Report }) {
               {item.stem?.text.trim() && <p className="print-stem">{item.stem.text}</p>}
               {item.text.text.split('\n').map((l, i) => (
                 <p key={i}>{l}</p>
+              ))}
+              {mediaLines(item).map((l, i) => (
+                <p key={`m${i}`} className="print-stem">
+                  {l}
+                </p>
               ))}
             </div>
             {item.kind === 'choice' && (

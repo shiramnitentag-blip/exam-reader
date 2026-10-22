@@ -7,6 +7,7 @@ import {
   extensionFor,
   formatDate,
   labelForFile,
+  mediaLines,
   optionLetter,
   recordingLine,
   statusText,
@@ -73,6 +74,7 @@ export async function buildDocx(r: Report): Promise<File> {
     );
     if (item.stem?.text.trim()) children.push(para(item.stem.text, rtl, { color: '555555' }));
     for (const line of item.text.text.split('\n')) if (line.trim()) children.push(para(line, rtl));
+    for (const line of mediaLines(item)) children.push(para(line, rtl, { color: '333333' }));
     if (item.kind === 'choice') {
       item.options.forEach((o, i) => {
         const chosen = answer?.choice === i;

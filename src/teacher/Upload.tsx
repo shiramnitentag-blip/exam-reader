@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
 import { addNikud, extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
 import { blobToBase64, fileKind, prepareImage, readDocx, type PreparedImage } from '../files';
-import { applyNikud, finishNikud, hebrewTexts, rawToExam } from '../importer';
+import { applyNikud, attachDocxPictures, finishNikud, hebrewTexts, rawToExam } from '../importer';
 import { keepScreenOn } from '../device';
 
 type Step = { key: string; label: string; state: 'wait' | 'run' | 'done' | 'error'; detail?: string };
@@ -111,18 +111,24 @@ export function Upload({
       let sourceText: string | undefined;
       let docxImages = 0;
       let unreadable = 0;
+      let pictures: PreparedImage[] = []; // pictures from the Word file
+      let source: { pdf?: Blob; pages?: Blob[] } = {};
       if (doc && fileKind(doc) === 'docx') {
         const d = await readDocx(doc);
         if (!d.plainText.trim() && d.images.length === 0) throw new Error('empty-docx');
         sourceText = d.plainText;
         docxImages = d.images.length;
         unreadable = d.unreadable;
+        pictures = d.images;
+        source = { pages: d.images.map((i) => i.blob) };
         input = { kind: 'text', text: d.text, images: d.images.map((i) => ({ base64: i.base64, mediaType: i.mediaType })) };
         if (docxImages > 0) setStep('prep', { detail: `טֶקְסְט + ${docxImages} תְּמוּנוֹת` });
       } else if (doc) {
         input = { kind: 'pdf', base64: await blobToBase64(doc) };
+        source = { pdf: doc };
       } else {
         input = { kind: 'images', images: images.map((i) => ({ base64: i.base64, mediaType: i.mediaType })) };
+        source = { pages: images.map((i) => i.blob) };
       }
       setStep('prep', { state: 'done' });
 
@@ -172,6 +178,10 @@ export function Upload({
 
       current = 'save';
       setStep('save', { state: 'run' });
+      // Pictures from the Word file go to the question they belong to; the source file is kept,
+      // so the teacher can cut out pictures from it later.
+      await attachDocxPictures(exam, pictures);
+      await db.putSource({ examId: exam.id, ...source });
       await db.putExam(exam);
       setStep('save', { state: 'done' });
       keepScreenOn(false);

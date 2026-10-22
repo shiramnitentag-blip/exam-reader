@@ -44,6 +44,15 @@ export const sampleExam: Exam = {
       kind: 'open',
       stem,
       text: { text: 'סָעִיף א. מָה הַדְּבוֹרִים אוֹסְפוֹת מֵהַפְּרָחִים? מָה הֵן מְכִינוֹת מִזֶּה?' },
+      media: [
+        {
+          kind: 'image',
+          id: 'sample-img-1',
+          place: 'text',
+          src: `${import.meta.env.BASE_URL}sample-bee.png`,
+          caption: { text: 'דְּבוֹרָה עָפָה אֶל פֶּרַח.' },
+        },
+      ],
       options: [],
       lang: 'he',
       passageId: 'p1',
@@ -69,6 +78,23 @@ export const sampleExam: Exam = {
       label: '2',
       kind: 'choice',
       text: { text: 'שְׁאֵלָה 2. לְפִי הַקֶּטַע, מָה קוֹרֶה בַּשָּׁנִים הָאַחֲרוֹנוֹת? בַּחֲרִי תְּשׁוּבָה אַחַת.' },
+      media: [
+        {
+          kind: 'table',
+          id: 'sample-table-1',
+          place: 'text',
+          table: {
+            id: 'sample-t1',
+            caption: { text: 'מִסְפַּר הַכַּוָּרוֹת בְּחַוָּה אַחַת:' },
+            headers: [{ text: 'שָׁנָה' }, { text: 'מִסְפַּר כַּוָּרוֹת' }],
+            rows: [
+              [{ text: '2000' }, { text: '120' }],
+              [{ text: '2010' }, { text: '90' }],
+              [{ text: '2020' }, { text: '60' }],
+            ],
+          },
+        },
+      ],
       options: [
         { text: 'יֵשׁ יוֹתֵר דְּבוֹרִים בָּעוֹלָם.' },
         { text: 'יֵשׁ פָּחוֹת דְּבוֹרִים בָּעוֹלָם.' },

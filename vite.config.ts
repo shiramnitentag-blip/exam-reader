@@ -33,7 +33,7 @@ export default defineConfig({
       },
       workbox: {
         // Everything is precached so the app opens in airplane mode.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2}'],
         navigateFallback: 'index.html',
         // Take over the open page right away, so everything works offline from the first visit.
         clientsClaim: true,

@@ -98,3 +98,20 @@ export function extensionFor(mime: string): string {
   if (mime.includes('wav')) return 'wav';
   return 'audio';
 }
+
+/** Tables and pictures of a question as plain lines, for the PDF and Word files. */
+export function mediaLines(item: Item): string[] {
+  const out: string[] = [];
+  for (const m of item.media ?? []) {
+    if (m.kind === 'image') {
+      out.push(`[תמונה]${m.caption?.text.trim() ? ' ' + m.caption.text : ''}`);
+      continue;
+    }
+    const t = m.table;
+    if (t.caption?.text.trim()) out.push(t.caption.text);
+    const headers = t.headers.map((h) => h.text.trim());
+    if (headers.some(Boolean)) out.push(headers.join(' | '));
+    for (const row of t.rows) out.push(row.map((c) => c.text.trim()).join(' | '));
+  }
+  return out;
+}

@@ -10,7 +10,15 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export type PreparedImage = { base64: string; mediaType: 'image/jpeg'; previewUrl: string; name: string };
+export type PreparedImage = {
+  base64: string;
+  mediaType: 'image/jpeg';
+  previewUrl: string;
+  name: string;
+  blob: Blob;
+  width: number;
+  height: number;
+};
 
 // The model reads images up to 2576 pixels on the long edge; larger photos only cost more.
 const MAX_EDGE = 2576;
@@ -51,6 +59,9 @@ export async function prepareImage(file: Blob & { name?: string }): Promise<Prep
       mediaType: 'image/jpeg',
       previewUrl: URL.createObjectURL(blob),
       name: file.name ?? '',
+      blob,
+      width: w,
+      height: h,
     };
   } finally {
     URL.revokeObjectURL(srcUrl);

@@ -1,8 +1,52 @@
 // Turning Claude's answer into an exam, and checking it.
-import type { RawExam } from './claude';
-import { itemHasNikud, mergeNikud, newId, normalizeSpaces, type Exam, type Item, type Txt } from './model';
+import type { RawExam, RawFigure, RawTable } from './claude';
+import { db } from './db';
+import type { PreparedImage } from './files';
+import {
+  itemHasNikud,
+  mediaTexts,
+  mergeNikud,
+  newId,
+  normalizeSpaces,
+  type Exam,
+  type Item,
+  type Media,
+  type MediaPlace,
+  type Txt,
+} from './model';
 
 const HAS_HEBREW = /[א-ת]/;
+
+/** Marks a picture from the Word file (number n) until it is saved on the device. */
+export const DOCX_IMAGE = 'docx:';
+
+/** Tables and pictures Claude found, as media of one place. Pictures without a file are returned apart. */
+function toMedia(tables: RawTable[], figures: RawFigure[], place: MediaPlace): { media: Media[]; missing: string[] } {
+  const media: Media[] = tables.map((t) => ({
+    kind: 'table' as const,
+    id: newId(),
+    place,
+    table: {
+      id: newId(),
+      caption: t.caption.trim() ? { text: t.caption } : undefined,
+      headers: t.headers.map((h) => ({ text: h })),
+      rows: t.rows.map((r) => r.map((c) => ({ text: c }))),
+    },
+  }));
+  const missing: string[] = [];
+  for (const f of figures) {
+    if (f.image > 0)
+      media.push({
+        kind: 'image',
+        id: newId(),
+        place,
+        imageId: `${DOCX_IMAGE}${f.image}`,
+        caption: f.caption.trim() ? { text: f.caption } : undefined,
+      });
+    else missing.push(f.caption);
+  }
+  return { media, missing };
+}
 
 /** Builds an exam (not yet approved) from what Claude returned. */
 export function rawToExam(
@@ -13,7 +57,15 @@ export function rawToExam(
   const passages = raw.passages.map((p) => {
     const id = newId();
     passageIds.set(p.id, id);
-    return { id, title: { text: p.title }, body: { text: p.text }, lang: p.lang };
+    const m = toMedia(p.tables ?? [], p.figures ?? [], 'text');
+    return {
+      id,
+      title: { text: p.title },
+      body: { text: p.text },
+      lang: p.lang,
+      media: m.media,
+      missingFigures: m.missing.length ? m.missing : undefined,
+    };
   });
 
   const items: Item[] = [];
@@ -25,8 +77,11 @@ export function rawToExam(
       readMode: 'normal' as const,
     };
     if (q.subquestions.length === 0) {
+      const m = toMedia(q.tables ?? [], q.figures ?? [], 'text');
       items.push({
         ...base,
+        media: m.media,
+        missingFigures: m.missing.length ? m.missing : undefined,
         id: newId(),
         label: q.number,
         kind: q.type,
@@ -38,8 +93,14 @@ export function rawToExam(
       });
     } else {
       for (const s of q.subquestions) {
+        // The parent's tables and pictures appear with every sub-question, after the shared text.
+        const shared = toMedia(q.tables ?? [], q.figures ?? [], 'stem');
+        const own = toMedia(s.tables ?? [], s.figures ?? [], 'text');
+        const missing = [...(s === q.subquestions[0] ? shared.missing : []), ...own.missing];
         items.push({
           ...base,
+          media: [...shared.media, ...own.media],
+          missingFigures: missing.length ? missing : undefined,
           id: newId(),
           label: `${q.number}${s.letter}`,
           kind: s.type,
@@ -71,7 +132,11 @@ export function rawToExam(
     const found = (t: string) => !t.trim() || source.includes(normalizeSpaces(t));
     let missing = 0;
     for (const it of exam.items) {
-      const ok = found(it.text.text) && (!it.stem || found(it.stem.text)) && it.options.every((o) => found(o.text));
+      const ok =
+        found(it.text.text) &&
+        (!it.stem || found(it.stem.text)) &&
+        it.options.every((o) => found(o.text)) &&
+        mediaTexts((it.media ?? []).filter((m) => m.kind === 'table')).every((t) => found(t.text));
       if (!ok) {
         it.sourceWarning = true;
         missing++;
@@ -98,11 +163,13 @@ export function hebrewTexts(exam: Exam): { id: string; text: string; target: Txt
   exam.passages.forEach((p) => {
     add(p.title);
     add(p.body);
+    mediaTexts(p.media).forEach(add);
   });
   exam.items.forEach((it) => {
     add(it.stem);
     add(it.text);
     it.options.forEach(add);
+    mediaTexts(it.media).forEach(add);
   });
   return out;
 }
@@ -141,4 +208,44 @@ export function finishNikud(exam: Exam, partial: number, failed: number) {
   const flagged = exam.items.filter((it) => it.reveals && it.lang === 'he').length;
   if (flagged > 0) notes.push(`ב-${flagged} שאלות הניקוד כבוי בכוונה, כי הן עלולות לחשוף תשובה (מסומנות בצהוב). אפשר להדליק אותו ידנית.`);
   exam.notes = [...(exam.notes ?? []), ...notes];
+}
+
+/**
+ * Saves the Word file's pictures that Claude placed in questions (as "docx:n") on the device,
+ * and lists in the notes the pictures Claude saw in a PDF or photo, to cut out by hand.
+ */
+export async function attachDocxPictures(exam: Exam, pictures: PreparedImage[]) {
+  const saved = new Map<number, string>();
+  const fix = async (media: Media[] | undefined): Promise<Media[] | undefined> => {
+    if (!media) return media;
+    const out: Media[] = [];
+    for (const m of media) {
+      if (m.kind !== 'image' || !m.imageId?.startsWith(DOCX_IMAGE)) {
+        out.push(m);
+        continue;
+      }
+      const n = Number(m.imageId.slice(DOCX_IMAGE.length));
+      const pic = pictures[n - 1];
+      if (!pic) continue; // Claude pointed at a picture that does not exist
+      let id = saved.get(n);
+      if (!id) {
+        id = newId();
+        await db.putImage({ id, examId: exam.id, blob: pic.blob, width: pic.width, height: pic.height });
+        saved.set(n, id);
+      }
+      out.push({ ...m, imageId: id });
+    }
+    return out;
+  };
+  for (const p of exam.passages) p.media = await fix(p.media);
+  for (const it of exam.items) it.media = await fix(it.media);
+
+  const missing =
+    exam.items.reduce((n, it) => n + (it.missingFigures?.length ?? 0), 0) +
+    exam.passages.reduce((n, p) => n + (p.missingFigures?.length ?? 0), 0);
+  if (missing > 0)
+    exam.notes = [
+      ...(exam.notes ?? []),
+      `במקור יש ${missing} תמונות (גרף, מפה, ציור). הן מסומנות ב-📍 בשאלות. לחצי "✂️ תמונה מהמקור" כדי לסמן ולחתוך אותן.`,
+    ];
 }
