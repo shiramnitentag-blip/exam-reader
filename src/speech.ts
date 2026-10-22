@@ -73,12 +73,22 @@ try {
 export function spokenText(seg: Segment): string {
   const text = seg.say ?? seg.text;
   if (seg.lang === 'en') return text;
-  return text
+  return holamMale(text)
     .replace(/["'`‘’“”„׳״]/g, '') // quotes, geresh, gershayim
     .replace(/[*•_#|~^]/g, ' ') // symbols the voice would name
     .replace(/(\D)\/|\/(\D)/g, '$1 $2') // a slash between words (ו/או), but not in numbers (3/4)
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * For the voice only: a ו that is just the "o" vowel (וֹ after a letter with no vowel of its own)
+ * is written the classic way, with the holam on the letter before it: תּוֹרָה → תֹּרָה.
+ * Azure's Hebrew voice reads "וֹ" as "vo" (תּוֹרָה sounded like "tovra"). A ו that is a real
+ * consonant (מִצְוֹת, after a vowel) is not changed.
+ */
+export function holamMale(text: string): string {
+  return text.normalize('NFD').replace(/([א-ת])([\u05BC\u05BF\u05C1\u05C2]*)ו\u05B9/g, '$1$2\u05B9').normalize('NFC');
 }
 
 let token = 0;
