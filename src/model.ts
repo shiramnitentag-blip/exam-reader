@@ -230,7 +230,25 @@ export function paragraphs(text: string): string[][] {
     .split(/\n+/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => (p.match(/[^.!?:;]+[.!?:;]*["'”׳״)\]]*\s*|[.!?:;]+\s*/g) ?? [p]).map((s) => s.trim()).filter(Boolean));
+    .map(splitSentences);
+}
+
+/**
+ * A sentence ends at . ! ? : ; only when a space or the end of the line comes next,
+ * so numbers like 16.5 or 10:30 stay whole.
+ */
+function splitSentences(p: string): string[] {
+  const out: string[] = [];
+  const end = /[.!?:;]+["'”׳״)\]]*(?=\s|$)/g;
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = end.exec(p))) {
+    const stop = m.index + m[0].length;
+    out.push(p.slice(start, stop).trim());
+    start = stop;
+  }
+  out.push(p.slice(start).trim());
+  return out.filter(Boolean);
 }
 
 export function sentenceSegments(text: string, idPrefix: string, lang: Lang): Segment[][] {
