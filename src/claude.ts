@@ -15,6 +15,12 @@ function client(apiKey: string) {
 
 export class ClaudeError extends Error {}
 
+/** The original (English) message, so a screenshot shows exactly what happened. */
+function details(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return m ? `\n(פְּרָטִים: ${m.slice(0, 300)})` : '';
+}
+
 export function hebrewError(e: unknown): string {
   if (e instanceof ClaudeError) return e.message;
   if (e instanceof Anthropic.AuthenticationError) return 'הַמַּפְתֵּחַ לֹא נָכוֹן. בִּדְקִי שֶׁהֶעְתַּקְתְּ אֶת כֻּלּוֹ, בְּמָסַךְ הַהַגְדָּרוֹת.';
@@ -22,14 +28,18 @@ export function hebrewError(e: unknown): string {
   if (e instanceof Anthropic.NotFoundError) return 'הַמּוֹדֶל לֹא זָמִין בַּחֶשְׁבּוֹן הַזֶּה.';
   if (e instanceof Anthropic.RateLimitError) return 'יוֹתֵר מִדַּי בַּקָּשׁוֹת בְּבַת אַחַת. חַכִּי דַּקָּה וְנַסִּי שׁוּב.';
   if (e instanceof Anthropic.APIConnectionError) return 'אֵין חִבּוּר לָאִינְטֶרְנֶט, אוֹ שֶׁהַחִבּוּר נִקְטַע. בִּדְקִי אֶת הָאִינְטֶרְנֶט וְנַסִּי שׁוּב.';
+  if (e instanceof Anthropic.APIError && e.status === 413)
+    return 'הַקֹּבֶץ גָּדוֹל מִדַּי לִשְׁלִיחָה. נַסִּי קֹבֶץ קָטָן יוֹתֵר, אוֹ פָּחוֹת עַמּוּדִים.' + details(e);
   if (e instanceof Anthropic.BadRequestError) {
     const msg = String(e.message).toLowerCase();
+    if (msg.includes('schema') || msg.includes('grammar') || msg.includes('compil'))
+      return 'תַּקָּלָה בָּאַפְּלִיקַצְיָה (לֹא בַּקֹּבֶץ שֶׁלָּךְ). סַפְּרִי לִי עָלֶיהָ וְצַלְּמִי אֶת הַהוֹדָעָה.' + details(e);
     if (msg.includes('credit') || msg.includes('balance') || msg.includes('billing'))
       return 'אֵין מַסְפִּיק קְרֶדִיט בַּחֶשְׁבּוֹן שֶׁל Claude. צָרִיךְ לִטְעֹן קְרֶדִיט בְּאַתַר Claude Console.';
-    if (msg.includes('too large') || msg.includes('too long') || msg.includes('exceed') || msg.includes('size'))
-      return 'הַקֹּבֶץ גָּדוֹל מִדַּי. נַסִּי קֹבֶץ קָטָן יוֹתֵר, אוֹ פַּחוֹת עַמּוּדִים.';
+    if (msg.includes('prompt is too long') || msg.includes('request too large') || msg.includes('too many pages') || msg.includes('maximum of'))
+      return 'הַקֹּבֶץ גָּדוֹל מִדַּי. נַסִּי קֹבֶץ קָטָן יוֹתֵר, אוֹ פָּחוֹת עַמּוּדִים.' + details(e);
     if (msg.includes('pdf') || msg.includes('image') || msg.includes('document'))
-      return 'Claude לֹא הִצְלִיחַ לִפְתֹּחַ אֶת הַקֹּבֶץ. נַסִּי לְצַלֵּם אוֹתוֹ שׁוּב, אוֹ לִשְׁמֹר אוֹתוֹ מֵחָדָשׁ.';
+      return 'Claude לֹא הִצְלִיחַ לִפְתֹּחַ אֶת הַקֹּבֶץ. נַסִּי לְצַלֵּם אוֹתוֹ שׁוּב, אוֹ לִשְׁמֹר אוֹתוֹ מֵחָדָשׁ.' + details(e);
     return `הַבַּקָּשָׁה נִדְחֲתָה: ${e.message}`;
   }
   if (e instanceof Anthropic.APIError) {
@@ -93,8 +103,9 @@ async function streamJson<T>(
 
 // ---------- 1. reading the exam ----------
 
-export type RawTable = { caption: string; headers: string[]; rows: string[][] };
-export type RawFigure = { image: number; caption: string };
+/** owner: where it belongs: "p1" (a passage), "3" (question 3), or "3.ב" (sub-question ב of question 3). */
+export type RawTable = { owner: string; caption: string; headers: string[]; rows: string[][] };
+export type RawFigure = { owner: string; image: number; caption: string };
 export type RawSub = {
   letter: string;
   type: 'open' | 'choice';
@@ -103,8 +114,6 @@ export type RawSub = {
   options: string[];
   reveals_answer: boolean;
   reveal_reason: string;
-  tables: RawTable[];
-  figures: RawFigure[];
 };
 export type RawQuestion = Omit<RawSub, 'letter'> & {
   number: string;
@@ -114,8 +123,11 @@ export type RawQuestion = Omit<RawSub, 'letter'> & {
 export type RawExam = {
   title: string;
   instructions: { text: string; lang: Lang }[];
-  passages: { id: string; title: string; text: string; lang: Lang; tables: RawTable[]; figures: RawFigure[] }[];
+  passages: { id: string; title: string; text: string; lang: Lang }[];
   questions: RawQuestion[];
+  tables: RawTable[];
+  figures: RawFigure[];
+  simpleFormat?: boolean; // tables came as text (the full format was refused)
 };
 
 const LANG = { type: 'string', enum: ['he', 'en'] };
@@ -125,8 +137,13 @@ const TABLES = {
   items: {
     type: 'object',
     additionalProperties: false,
-    required: ['caption', 'headers', 'rows'],
-    properties: { caption: STR, headers: { type: 'array', items: STR }, rows: { type: 'array', items: { type: 'array', items: STR } } },
+    required: ['owner', 'caption', 'headers', 'rows'],
+    properties: {
+      owner: STR,
+      caption: STR,
+      headers: { type: 'array', items: STR },
+      rows: { type: 'array', items: { type: 'array', items: STR } },
+    },
   },
 };
 const FIGURES = {
@@ -134,13 +151,11 @@ const FIGURES = {
   items: {
     type: 'object',
     additionalProperties: false,
-    required: ['image', 'caption'],
-    properties: { image: { type: 'integer' }, caption: STR },
+    required: ['owner', 'image', 'caption'],
+    properties: { owner: STR, image: { type: 'integer' }, caption: STR },
   },
 };
 const SUB_PROPS = {
-  tables: TABLES,
-  figures: FIGURES,
   type: { type: 'string', enum: ['open', 'choice'] },
   text: STR,
   lang: LANG,
@@ -151,8 +166,12 @@ const SUB_PROPS = {
 const EXAM_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'instructions', 'passages', 'questions'],
+  // Tables and pictures are two flat lists at the top (each says where it belongs), so the
+  // format stays simple: a format that is too complex is rejected by the API.
+  required: ['title', 'instructions', 'passages', 'questions', 'tables', 'figures'],
   properties: {
+    tables: TABLES,
+    figures: FIGURES,
     title: STR,
     instructions: {
       type: 'array',
@@ -163,8 +182,8 @@ const EXAM_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'title', 'text', 'lang', 'tables', 'figures'],
-        properties: { id: STR, title: STR, text: STR, lang: LANG, tables: TABLES, figures: FIGURES },
+        required: ['id', 'title', 'text', 'lang'],
+        properties: { id: STR, title: STR, text: STR, lang: LANG },
       },
     },
     questions: {
@@ -192,6 +211,25 @@ const EXAM_SCHEMA = {
   },
 };
 
+/** The format without the separate lists of tables and pictures (as it was before they were added). */
+const SIMPLE_SCHEMA = (() => {
+  const s = JSON.parse(JSON.stringify(EXAM_SCHEMA));
+  delete s.properties.tables;
+  delete s.properties.figures;
+  s.required = s.required.filter((k: string) => k !== 'tables' && k !== 'figures');
+  return s;
+})();
+
+const SIMPLE_NOTE = `
+
+This time the answer format has no "tables" and "figures" lists. Copy each table into the text of the item it belongs to instead, row by row, with the cells of a row separated by " | ", word for word. Where a picture appears, write nothing.`;
+
+function isFormatError(e: unknown): boolean {
+  if (!(e instanceof Anthropic.BadRequestError)) return false;
+  const m = String(e.message).toLowerCase();
+  return m.includes('schema') || m.includes('grammar') || m.includes('compil') || m.includes('complex');
+}
+
 const EXTRACT_SYSTEM = `You convert a school exam into structured JSON for an accessibility app. A 15-year-old student with dyslexia uses the app: a text-to-speech voice reads each question to her and she answers orally. Her teacher reviews your output before the student sees it.
 
 THE MOST IMPORTANT RULE: COPY THE WORDING EXACTLY.
@@ -211,8 +249,8 @@ How to fill the fields:
   - lang: "he" or "en", by the language the item is written in.
 - Keep point values such as "(10 נקודות)" in the text, as written.
 - Leave out lines or boxes for writing answers, page numbers, headers and footers, and logos.
-- Tables: put every table in "tables" of the item it belongs to (a passage, a question, or a sub-question), not in the text. headers: the column titles; rows: one array per row, one string per cell, word for word, in the same order as the columns ("" for an empty cell). If the table has no row of column titles, headers is an array of "" (one per column). caption: a title or a note written right above or below the table ("" if none). Do not copy the table's content into text as well.
-- Pictures (a graph, map, cartoon, drawing, diagram or photo): add an entry to "figures" of the item it belongs to. caption: text written right under or above the picture in the source, word for word (for example "מקור: ..."), or "" if none. Do not describe the picture and do not write [איור] in the text. image: the picture number n from an [IMAGE n] mark if the exam came from a Word file, otherwise 0.
+- Tables: list every table in the top-level "tables", not in the text. owner: where the table belongs: the passage id (e.g. "p1"), the question number (e.g. "3"), or the question number, a dot and the sub-question letter (e.g. "3.ב") for a table inside a sub-question. headers: the column titles; rows: one array per row, one string per cell, word for word, in the same order as the columns ("" for an empty cell). If the table has no row of column titles, headers is an array of "" (one per column). caption: a title or a note written right above or below the table ("" if none). Do not copy the table's content into text as well.
+- Pictures (a graph, map, cartoon, drawing, diagram or photo): list every picture in the top-level "figures", with owner written the same way as for tables. caption: text written right under or above the picture in the source, word for word (for example "מקור: ..."), or "" if none. Do not describe the picture and do not write [איור] in the text. image: the picture number n from an [IMAGE n] mark if the exam came from a Word file, otherwise 0.
 - Text that is part of a picture (labels on a graph, words in a cartoon) is not copied anywhere; the student will see the picture itself.
 
 Questions where reading aloud or nikud could give away the answer:
@@ -244,8 +282,8 @@ export async function extractExam(
           'Read every picture carefully. If a picture contains exam text, copy that text word for word into the place where the picture appears, ' +
           'exactly as if it had been typed there, following all the rules above. ' +
           'If a picture is only a logo or decoration, ignore it. ' +
-          'If it is a graph, map, cartoon, drawing, diagram or photo, list it in "figures" of the item it belongs to, with image = n. ' +
-          'If a picture is a table, put it in "tables" with its cells copied word for word. ' +
+          'If it is a graph, map, cartoon, drawing, diagram or photo, list it in "figures" with its owner and image = n. ' +
+          'If a picture is a table, list it in "tables" with its owner and its cells copied word for word. ' +
           'Never write the [IMAGE n] marks themselves in the output.',
       });
       input.images.forEach((img, i) => {
@@ -265,7 +303,23 @@ export async function extractExam(
     type: 'text',
     text: 'Convert this exam to the JSON format. Copy every text exactly as written in the source.',
   });
-  return streamJson<RawExam>(apiKey, EXTRACT_SYSTEM, content, EXAM_SCHEMA, onProgress, /"number"\s*:/g, signal);
+  try {
+    return await streamJson<RawExam>(apiKey, EXTRACT_SYSTEM, content, EXAM_SCHEMA, onProgress, /"number"\s*:/g, signal);
+  } catch (e) {
+    if (!isFormatError(e)) throw e;
+    // The API found the answer format too complex. Ask again in the simple format of before
+    // (no separate tables and pictures), so the exam still comes through.
+    const raw = await streamJson<RawExam>(
+      apiKey,
+      EXTRACT_SYSTEM + SIMPLE_NOTE,
+      content,
+      SIMPLE_SCHEMA,
+      onProgress,
+      /"number"\s*:/g,
+      signal,
+    );
+    return { ...raw, tables: [], figures: [], simpleFormat: true };
+  }
 }
 
 // ---------- 2. adding nikud ----------

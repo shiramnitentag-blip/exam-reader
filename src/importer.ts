@@ -20,6 +20,34 @@ const HAS_HEBREW = /[א-ת]/;
 /** Marks a picture from the Word file (number n) until it is saved on the device. */
 export const DOCX_IMAGE = 'docx:';
 
+const ownerKey = (s: string) => s.replace(/[\s.,:'"׳״()\-]/g, '');
+
+/**
+ * Finds where each table and picture belongs (Claude says it in "owner": "p1", "3" or "3.ב").
+ * Returns a lookup for a passage id, a question number, or a question number + letter.
+ */
+function groupByOwner(raw: RawExam) {
+  const targets: string[] = [
+    ...raw.passages.map((p) => p.id),
+    ...raw.questions.flatMap((q) => [q.number, ...q.subquestions.map((s) => `${q.number}${s.letter}`)]),
+  ];
+  const keys = new Set(targets.map(ownerKey));
+  const questionKeys = raw.questions.map((q) => ownerKey(q.number)).sort((a, b) => b.length - a.length);
+  const where = (owner: string): string => {
+    const k = ownerKey(owner);
+    if (keys.has(k)) return k;
+    // "3ג" when there is no ג: the question it starts with
+    const q = questionKeys.find((qk) => qk && k.startsWith(qk));
+    if (q) return q;
+    return ownerKey(raw.questions[0]?.number ?? ''); // unknown: the first question
+  };
+  const tables = new Map<string, RawTable[]>();
+  const figures = new Map<string, RawFigure[]>();
+  for (const t of raw.tables ?? []) tables.set(where(t.owner), [...(tables.get(where(t.owner)) ?? []), t]);
+  for (const f of raw.figures ?? []) figures.set(where(f.owner), [...(figures.get(where(f.owner)) ?? []), f]);
+  return (target: string) => ({ tables: tables.get(ownerKey(target)) ?? [], figures: figures.get(ownerKey(target)) ?? [] });
+}
+
 /** Tables and pictures Claude found, as media of one place. Pictures without a file are returned apart. */
 function toMedia(tables: RawTable[], figures: RawFigure[], place: MediaPlace): { media: Media[]; missing: string[] } {
   const media: Media[] = tables.map((t) => ({
@@ -53,11 +81,13 @@ export function rawToExam(
   raw: RawExam,
   opts: { title: string; sourceText?: string; wantNikud: boolean; hasPictures?: boolean },
 ): Exam {
+  const of = groupByOwner(raw);
   const passageIds = new Map<string, string>();
   const passages = raw.passages.map((p) => {
     const id = newId();
     passageIds.set(p.id, id);
-    const m = toMedia(p.tables ?? [], p.figures ?? [], 'text');
+    const own = of(p.id);
+    const m = toMedia(own.tables, own.figures, 'text');
     return {
       id,
       title: { text: p.title },
@@ -77,7 +107,8 @@ export function rawToExam(
       readMode: 'normal' as const,
     };
     if (q.subquestions.length === 0) {
-      const m = toMedia(q.tables ?? [], q.figures ?? [], 'text');
+      const own = of(q.number);
+      const m = toMedia(own.tables, own.figures, 'text');
       items.push({
         ...base,
         media: m.media,
@@ -94,8 +125,10 @@ export function rawToExam(
     } else {
       for (const s of q.subquestions) {
         // The parent's tables and pictures appear with every sub-question, after the shared text.
-        const shared = toMedia(q.tables ?? [], q.figures ?? [], 'stem');
-        const own = toMedia(s.tables ?? [], s.figures ?? [], 'text');
+        const parent = of(q.number);
+        const mine = of(`${q.number}${s.letter}`);
+        const shared = toMedia(parent.tables, parent.figures, 'stem');
+        const own = toMedia(mine.tables, mine.figures, 'text');
         const missing = [...(s === q.subquestions[0] ? shared.missing : []), ...own.missing];
         items.push({
           ...base,
@@ -123,7 +156,9 @@ export function rawToExam(
     instructions: raw.instructions.map((b) => ({ id: newId(), text: { text: b.text }, lang: b.lang })),
     passages,
     items,
-    notes: [],
+    notes: raw.simpleFormat
+      ? ['הַפַּעַם הַטַּבְלָאוֹת הִגִּיעוּ כְּטֶקְסְט, וּתְמוּנוֹת לֹא שֻׁיְּכוּ. אֶפְשָׁר לְהוֹסִיף טַבְלָה וּתְמוּנָה בְּכָל שְׁאֵלָה (➕ טַבְלָה, 🖼️ תְּמוּנָה).']
+      : [],
   };
 
   // For Word files we have the source text: check that every question appears in it word for word.
