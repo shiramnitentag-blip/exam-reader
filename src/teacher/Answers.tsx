@@ -15,6 +15,7 @@ import {
   type Summary,
 } from '../report';
 import { buildDocx, buildRecordingsZip, deliver } from '../export';
+import { buildPdf } from '../pdf';
 import { speech } from '../speech';
 
 export function AnswersList({ onBack, onOpen }: { onBack: () => void; onOpen: (examId: string) => void }) {
@@ -72,6 +73,7 @@ type Making = { state: 'idle' | 'making' | 'ready' | 'none' | 'error'; file?: Fi
 export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () => void }) {
   const [report, setReport] = useState<Report | null | undefined>(undefined);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [pdf, setPdf] = useState<Making>({ state: 'idle' });
   const [docx, setDocx] = useState<Making>({ state: 'idle' });
   const [zip, setZip] = useState<Making>({ state: 'idle' });
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
@@ -130,6 +132,14 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
   const answeredCount = report.items.filter((i) => i.answered).length;
   const clipCount = report.items.reduce((n, i) => n + i.clips.length, 0);
 
+  async function makePdf() {
+    setPdf({ state: 'making' });
+    try {
+      setPdf({ state: 'ready', file: await buildPdf(report!) });
+    } catch (e) {
+      setPdf({ state: 'error', msg: e instanceof Error ? e.message : String(e) });
+    }
+  }
   async function makeDocx() {
     setDocx({ state: 'making' });
     try {
@@ -174,17 +184,23 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
 
             <h2 className="section-title">יִצּוּא</h2>
             <div className="export-row">
-              <button className="btn" onClick={() => window.print()}>
-                🖨️ PDF / הַדְפָּסָה
-              </button>
+              {pdf.state === 'ready' && pdf.file ? (
+                <button className="btn btn-primary" onClick={() => void deliver(pdf.file!)}>
+                  📤 לִשְׁמֹר / לִשְׁלֹחַ קֹבֶץ PDF
+                </button>
+              ) : (
+                <button className="btn" onClick={makePdf} disabled={pdf.state === 'making'}>
+                  {pdf.state === 'making' ? '⏳ מְכִינָה…' : '📕 PDF'}
+                </button>
+              )}
 
               {docx.state === 'ready' && docx.file ? (
                 <button className="btn btn-primary" onClick={() => void deliver(docx.file!)}>
-                  📤 לִשְׁמֹר / לִשְׁלֹחַ קֹבֶץ וֶורְד
+                  📤 לִשְׁמֹר / לִשְׁלֹחַ קֹבֶץ Word
                 </button>
               ) : (
                 <button className="btn" onClick={makeDocx} disabled={docx.state === 'making'}>
-                  {docx.state === 'making' ? '⏳ מְכִינָה…' : '📄 וֶורְד'}
+                  {docx.state === 'making' ? '⏳ מְכִינָה…' : '📄 Word'}
                 </button>
               )}
 
@@ -199,11 +215,13 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
               )}
             </div>
             <p className="help">
-              PDF: בְּחַלּוֹן הַהַדְפָּסָה לוֹחֲצִים עַל כַּפְתּוֹר הַשִּׁתּוּף (אוֹ "שְׁמִירָה כְּ-PDF"). אִם הַחַלּוֹן לֹא נִפְתָּח, פִּתְחִי אֶת
-              הָאֲתָר בְּסָפָארִי (לֹא מֵהָאַיְקוֹן) וְנַסִּי שׁוּב.
+              לוֹחֲצִים פַּעַם אַחַת כְּדֵי לְהָכִין אֶת הַקֹּבֶץ, וּפַעַם שְׁנִיָּה כְּדֵי לִשְׁמֹר אוֹתוֹ בַּקְּבָצִים אוֹ לִשְׁלֹחַ אוֹתוֹ.
             </p>
-            {(docx.state === 'error' || zip.state === 'error') && (
-              <div className="notice error">❌ לֹא הִצְלַחְתִּי לְהָכִין אֶת הַקֹּבֶץ. {docx.msg ?? zip.msg}</div>
+            <button className="btn btn-small" onClick={() => window.print()}>
+              🖨️ הַדְפָּסָה יְשִׁירָה
+            </button>
+            {(pdf.state === 'error' || docx.state === 'error' || zip.state === 'error') && (
+              <div className="notice error">❌ לֹא הִצְלַחְתִּי לְהָכִין אֶת הַקֹּבֶץ. {pdf.msg ?? docx.msg ?? zip.msg}</div>
             )}
           </div>
 

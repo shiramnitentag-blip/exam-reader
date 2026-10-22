@@ -53,7 +53,7 @@ export function Upload({
       return;
     }
     if (kind !== 'image') {
-      setPickError('אֶפְשָׁר לְהַעֲלוֹת רַק קֹבֶץ וֶורְד (docx), PDF, אוֹ תְּמוּנוֹת.');
+      setPickError('אֶפְשָׁר לְהַעֲלוֹת רַק קֹבֶץ Word (docx), PDF, אוֹ תְּמוּנוֹת.');
       return;
     }
     setDoc(null);
@@ -185,11 +185,11 @@ export function Upload({
       }
       const msg =
         e instanceof Error && e.message === 'empty-docx'
-          ? 'קֹבֶץ הַוֶּורְד רֵיק, אוֹ שֶׁהַטֶּקְסְט בּוֹ הוּא תְּמוּנָה. נַסִּי לְהַעֲלוֹת אוֹתוֹ כְּ-PDF אוֹ לְצַלֵּם אוֹתוֹ.'
+          ? 'קֹבֶץ הַ-Word רֵיק, אוֹ שֶׁהַטֶּקְסְט בּוֹ הוּא תְּמוּנָה. נַסִּי לְהַעֲלוֹת אוֹתוֹ כְּ-PDF אוֹ לְצַלֵּם אוֹתוֹ.'
           : e instanceof Error && e.message === 'no-questions'
             ? 'Claude לֹא מָצָא שְׁאֵלוֹת בַּקֹּבֶץ. בִּדְקִי שֶׁזֶּה הַקֹּבֶץ הַנָּכוֹן, וְשֶׁהַצִּלּוּם בָּרוּר.'
             : e instanceof Error && /mammoth|zip|central directory/i.test(e.message)
-              ? 'לֹא הִצְלַחְתִּי לִקְרֹא אֶת קֹבֶץ הַוֶּורְד. נַסִּי לִשְׁמֹר אוֹתוֹ מֵחָדָשׁ כְּ-docx, אוֹ לְהַעֲלוֹת PDF.'
+              ? 'לֹא הִצְלַחְתִּי לִקְרֹא אֶת קֹבֶץ הַ-Word. נַסִּי לִשְׁמֹר אוֹתוֹ מֵחָדָשׁ כְּ-docx, אוֹ לְהַעֲלוֹת PDF.'
               : hebrewError(e);
       setError(msg);
     }
@@ -290,7 +290,7 @@ export function Upload({
             <div className="pick-grid">
               <label className="pick-btn">
                 <span className="pick-icon">📄</span>
-                קֹבֶץ וֶורְד אוֹ PDF
+                קֹבֶץ Word אוֹ PDF
                 <input
                   type="file"
                   accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
