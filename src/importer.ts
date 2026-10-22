@@ -238,7 +238,7 @@ export function finishNikud(exam: Exam, partial: number, failed: number) {
   for (const it of exam.items) it.useNikud = it.lang === 'he' && !it.reveals && itemHasNikud(it);
   const notes: string[] = [];
   if (partial > 0)
-    notes.push(`ב-${partial} קטעים חלק מהמילים נשארו בלי ניקוד, כי Claude כתב אותן אחרת מהמקור. אפשר ללחוץ "לנקד שוב" בשאלה.`);
+    notes.push(`ב-${partial} קטעים חלק מהמילים נשארו בלי ניקוד, כי בנוסח המנוקד הן נכתבו אחרת מהמקור. אפשר ללחוץ "לנקד שוב" בשאלה.`);
   if (failed > 0) notes.push(`${failed} קטעים נשארו בלי ניקוד. אפשר ללחוץ "לנקד שוב" בשאלה.`);
   const flagged = exam.items.filter((it) => it.reveals && it.lang === 'he').length;
   if (flagged > 0) notes.push(`ב-${flagged} שאלות הניקוד כבוי בכוונה, כי הן עלולות לחשוף תשובה (מסומנות בצהוב). אפשר להדליק אותו ידנית.`);

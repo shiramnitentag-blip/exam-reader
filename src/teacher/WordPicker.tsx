@@ -1,14 +1,15 @@
 // In the review screen: tap a vocalized word to see other ways to vocalize it, and pick one.
 import { createContext, useContext, useState } from 'react';
 import { db } from '../db';
-import { hebrewError, nikudOptions } from '../claude';
+import { hebrewError } from '../claude';
+import { wordOptions } from '../nikud';
 import { fitMarks, stripNikud } from '../model';
 
 /** Lets the review screen know a word's nikud was changed (to remake that sentence's voice file). */
 export const NikudPicked = createContext<() => void>(() => {});
 
 type Opt = { nikud: string; meaning: string };
-const cache = new Map<string, Opt[]>(); // "word|sentence" → options, while the app is open
+const cache = new Map<string, { options: Opt[]; fallback: boolean }>(); // "word|sentence" → options, while the app is open
 
 export function WordPicker({
   vocalized,
@@ -20,6 +21,7 @@ export function WordPicker({
   const picked = useContext(NikudPicked);
   const [open, setOpen] = useState<number | null>(null);
   const [opts, setOpts] = useState<Opt[] | null>(null);
+  const [fallback, setFallback] = useState(false);
   const [error, setError] = useState('');
 
   const parts = vocalized.split(/(\s+)/); // words at even places, spaces at odd ones
@@ -29,22 +31,23 @@ export function WordPicker({
     setOpts(null);
     setError('');
     const word = parts[i].replace(/^[^א-ת]+|[^֑-ת]+$/g, ''); // without punctuation around it
-    const key = `${word}|${vocalized}`;
-    if (cache.has(key)) {
-      setOpts(cache.get(key)!);
-      return;
-    }
+    // which appearance of this word in the text (the same word can appear twice)
+    const plain = stripNikud(word);
+    let nth = 0;
+    for (let k = 0; k < i; k += 2) if (stripNikud(parts[k].replace(/^[^א-ת]+|[^֑-ת]+$/g, '')) === plain) nth++;
+    const key = `${plain}|${nth}|${vocalized}`;
+    const display = (r: { options: Opt[]; fallback: boolean }) => {
+      setOpts(r.options);
+      setFallback(r.fallback);
+    };
+    if (cache.has(key)) return display(cache.get(key)!);
     const apiKey = await db.getMeta<string>('apiKey');
-    if (!apiKey) {
-      setError('אֵין מַפְתֵּחַ Claude בַּהַגְדָּרוֹת.');
-      return;
-    }
     try {
-      const list = await nikudOptions(apiKey, stripNikud(word), vocalized.slice(0, 600));
-      cache.set(key, list);
-      setOpts(list);
+      const r = await wordOptions(apiKey, plain, vocalized.slice(0, 1500), nth);
+      cache.set(key, r);
+      display(r);
     } catch (e) {
-      setError(hebrewError(e));
+      setError(e instanceof Error && e.message === 'no-key' ? 'דִּיקְטָה לֹא זְמִינָה, וְאֵין מַפְתֵּחַ Claude בַּהַגְדָּרוֹת.' : hebrewError(e));
     }
   }
 
@@ -87,11 +90,12 @@ export function WordPicker({
           {opts?.map((o, k) => (
             <button key={k} className="btn btn-small wp-option" onClick={() => choose(open, o.nikud)}>
               <b>{o.nikud}</b>
-              <span className="help">{o.meaning}</span>
+              {o.meaning && <span className="help">{o.meaning}</span>}
             </button>
           ))}
           {opts && opts.length === 0 && <span className="help">לֹא נִמְצְאוּ אֶפְשָׁרֻיּוֹת אֲחֵרוֹת.</span>}
           {error && <span className="warn">{error}</span>}
+          {opts && fallback && <span className="help small">(שִׁיטָה חֲלוּפִית: Claude, כִּי דִּיקְטָה לֹא זְמִינָה)</span>}
           <button className="btn btn-small" onClick={() => setOpen(null)}>
             ✕
           </button>

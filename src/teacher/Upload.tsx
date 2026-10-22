@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
-import { addNikud, extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
+import { extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
 import { blobToBase64, fileKind, prepareImage, readDocx, type PreparedImage } from '../files';
+import { vocalizeTexts, fallbackNote } from '../nikud';
 import { applyNikud, attachDocxPictures, finishNikud, hebrewTexts, rawToExam } from '../importer';
 import { keepScreenOn } from '../device';
 
@@ -100,7 +101,7 @@ export function Upload({
     const list: Step[] = [
       { key: 'prep', label: 'מְכִינָה אֶת הַקֹּבֶץ', state: 'run' },
       { key: 'read', label: 'Claude קוֹרֵא אֶת הַמִּבְחָן', state: 'wait' },
-      ...(wantNikud ? [{ key: 'nikud', label: 'Claude מוֹסִיף נִקּוּד', state: 'wait' as const }] : []),
+      ...(wantNikud ? [{ key: 'nikud', label: 'מוֹסִיפָה נִקּוּד (דִּיקְטָה)', state: 'wait' as const }] : []),
       { key: 'save', label: 'שׁוֹמֶרֶת', state: 'wait' },
     ];
     setSteps(list);
@@ -154,25 +155,16 @@ export function Upload({
         const texts = hebrewTexts(exam).map(({ id, text }) => ({ id, text }));
         if (texts.length > 0) {
           const total = texts.length;
-          const result = await addNikud(
-            apiKey,
-            texts,
-            (p) => setStep('nikud', { detail: p.phase === 'thinking' ? 'Claude קוֹרֵא…' : `${p.found} מִתּוֹךְ ${total} קְטָעִים` }),
-            ctrl.signal,
-          );
-          let r = applyNikud(exam, result);
-          let partial = r.partial;
-          // One more try for texts that came back without usable nikud.
-          if (r.failedIds.length > 0) {
-            const again = new Set(r.failedIds);
-            setStep('nikud', { detail: `מְנַסָּה שׁוּב ${again.size} קְטָעִים` });
-            const retry = await addNikud(apiKey, texts.filter((t) => again.has(t.id)), () => {}, ctrl.signal);
-            r = applyNikud(exam, retry, again);
-            partial += r.partial;
-          }
-          finishNikud(exam, partial, r.failedIds.length);
+          const run = await vocalizeTexts(apiKey, texts, (detail) => setStep('nikud', { detail }), ctrl.signal);
+          const r = applyNikud(exam, run.result);
+          finishNikud(exam, r.partial, r.failedIds.length);
+          const note = fallbackNote(run);
+          if (note) exam.notes = [note, ...(exam.notes ?? [])];
           const ok = total - r.failedIds.length;
-          setStep('nikud', { state: 'done', detail: ok === total ? 'הַכֹּל מְנֻקָּד' : `${ok} מִתּוֹךְ ${total} קְטָעִים` });
+          setStep('nikud', {
+            state: 'done',
+            detail: (ok === total ? 'הַכֹּל מְנֻקָּד' : `${ok} מִתּוֹךְ ${total} קְטָעִים`) + (note ? ' · שִׁיטָה חֲלוּפִית (Claude)' : ''),
+          });
         } else setStep('nikud', { state: 'done', detail: 'אֵין טֶקְסְט בְּעִבְרִית' });
       }
 
@@ -393,7 +385,7 @@ export function Upload({
                 <b>לְהוֹסִיף נִקּוּד</b>
                 <br />
                 <span className="help">
-                  Claude יְנַקֵּד אֶת הַטֶּקְסְט בְּעִבְרִית לְפִי הַהֶקְשֵׁר, בְּלִי לְשַׁנּוֹת מִלִּים. בִּשְׁאֵלוֹת שֶׁעֲלוּלוֹת לַחְשֹׂף
+                  הַנַּקְדָן שֶׁל דִּיקְטָה יְנַקֵּד אֶת הַטֶּקְסְט בְּעִבְרִית (וְאִם הוּא לֹא זָמִין, Claude). הַטֶּקְסְט נִשְׁלָח לְדִיקְטָה לְשֵׁם כָּךְ. בִּשְׁאֵלוֹת שֶׁעֲלוּלוֹת לַחְשֹׂף
                   תְּשׁוּבָה, הַנִּקּוּד יִהְיֶה כָּבוּי.
                 </span>
               </span>

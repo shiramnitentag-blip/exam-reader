@@ -1,7 +1,8 @@
 // Review screen: the teacher checks and fixes everything before the student sees the exam.
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
-import { addNikud, hebrewError } from '../claude';
+import { hebrewError } from '../claude';
+import { fallbackNote, vocalizeTexts } from '../nikud';
 import {
   itemHasNikud,
   mergeNikud,
@@ -583,7 +584,7 @@ function ItemCard({
   const hasNikud = itemHasNikud(item);
   const [nikudState, setNikudState] = useState<{ busy: boolean; msg?: string; error?: boolean }>({ busy: false });
 
-  /** Asks Claude to vocalize just this question (its shared text, the question and the options). */
+  /** Vocalizes just this question (Dicta, or Claude as the fallback) (its shared text, the question and the options). */
   async function vocalize() {
     const apiKey = await db.getMeta<string>('apiKey');
     if (!apiKey) {
@@ -596,7 +597,9 @@ function ItemCard({
     texts.push({ id: 'text', text: item.text.text });
     item.options.forEach((o, i) => texts.push({ id: `o${i}`, text: o.text }));
     try {
-      const res = await addNikud(apiKey, texts.filter((t) => t.text.trim()), () => {});
+      const run = await vocalizeTexts(apiKey, texts.filter((t) => t.text.trim()), () => {});
+      const res = run.result;
+      const note = fallbackNote(run);
       let missing = 0;
       const fit = (id: string, t: Txt) => {
         const voc = res[id];
@@ -611,7 +614,10 @@ function ItemCard({
         it.options = it.options.map((o, i) => fit(`o${i}`, o));
         it.useNikud = itemHasNikud(it);
       });
-      setNikudState({ busy: false, msg: missing ? `נֻקַּד. ${missing} מִלִּים נִשְׁאֲרוּ בְּלִי נִקּוּד.` : 'נֻקַּד ✓' });
+      setNikudState({
+        busy: false,
+        msg: (missing ? `נֻקַּד. ${missing} מִלִּים נִשְׁאֲרוּ בְּלִי נִקּוּד.` : 'נֻקַּד ✓') + (note ? `\n${note}` : ''),
+      });
     } catch (e) {
       setNikudState({ busy: false, error: true, msg: hebrewError(e) });
     }
@@ -681,7 +687,7 @@ function ItemCard({
             {nikudState.busy ? '⏳ מְנַקֶּדֶת…' : hasNikud ? '✨ לְנַקֵּד שׁוּב' : '✨ לְנַקֵּד'}
           </button>
         )}
-        {nikudState.msg && <span className={nikudState.error ? 'warn' : 'help'}>{nikudState.msg}</span>}
+        {nikudState.msg && <span className={nikudState.error ? 'warn' : 'help'} style={{ whiteSpace: 'pre-line' }}>{nikudState.msg}</span>}
       </div>
       <div className="settings-row">
         <span className="setting-name">הַקְרָאָה:</span>
