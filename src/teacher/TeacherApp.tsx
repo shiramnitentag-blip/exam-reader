@@ -9,6 +9,8 @@ import { Upload } from './Upload';
 import { Review } from './Review';
 import { AnswersDetail, AnswersList } from './Answers';
 import { PrepareAudio } from './PrepareAudio';
+import { mb, PreExamCheck } from './PreExamCheck';
+import { freeSpaceMB, LOW_SPACE_MB } from '../checks';
 import { loadTTSSettings, providerFor } from '../tts';
 import { missingJobs } from '../tts/prepare';
 
@@ -32,6 +34,8 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
   const [confirm, setConfirm] = useState<null | { text: string; yes: string; action: () => Promise<void> }>(null);
   const [message, setMessage] = useState('');
   const [preparing, setPreparing] = useState<Exam | null>(null);
+  const [checking, setChecking] = useState<Exam | null>(null);
+  const [lowSpace, setLowSpace] = useState<number | null>(null); // MB free, when it is low
   // For each exam: how many voice files are missing (null = voice service not set up).
   const [audio, setAudio] = useState<Record<string, number | null>>({});
 
@@ -41,6 +45,8 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
     setExams(all);
     setActiveId(active);
     setHasKey(!!key);
+    const space = await freeSpaceMB();
+    setLowSpace(space && space.freeMB < LOW_SPACE_MB ? space.freeMB : null);
     const tts = await loadTTSSettings();
     const status: Record<string, number | null> = {};
     for (const ex of all) status[ex.id] = providerFor(tts) ? (await missingJobs(ex, tts)).length : null;
@@ -105,6 +111,12 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
               </button>
             </div>
           )}
+          {lowSpace !== null && (
+            <div className="notice error">
+              ⚠️ נִשְׁאַר מְעַט מָקוֹם פָּנוּי בָּאַיְפֶּד (בְּעֵרֶךְ {mb(lowSpace)}). הַקְלָטוֹת עֲלוּלוֹת לֹא לְהִשָּׁמֵר. כְּדַאי לִמְחֹק תְּשׁוּבוֹת יְשָׁנוֹת
+              (אַחֲרֵי שֶׁשָּׁמַרְתְּ אוֹתָן) אוֹ לְפַנּוֹת מָקוֹם בָּאַיְפֶּד.
+            </div>
+          )}
           {message && (
             <div className="notice ok" onClick={() => setMessage('')}>
               ✅ {message}
@@ -141,6 +153,9 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
                     </div>
                   )}
                   <div className="exam-card-actions">
+                    <button className={`btn btn-small ${isActive ? 'btn-primary' : ''}`} onClick={() => setChecking(ex)}>
+                      🩺 בְּדִיקָה לִפְנֵי מִבְחָן
+                    </button>
                     <button className="btn btn-small" onClick={() => setPreparing(ex)}>
                       🎧 הֲכָנָה לַמִּבְחָן
                     </button>
@@ -210,6 +225,21 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
             setPreparing(null);
             setView({ name: 'settings' });
           }}
+        />
+      )}
+      {checking && (
+        <PreExamCheck
+          exam={checking}
+          isActive={checking.id === activeId}
+          onClose={() => {
+            setChecking(null);
+            void reload();
+          }}
+          onPrepare={() => {
+            setPreparing(checking);
+            setChecking(null);
+          }}
+          onMakeActive={() => void makeActive(checking.id)}
         />
       )}
       {confirm && (

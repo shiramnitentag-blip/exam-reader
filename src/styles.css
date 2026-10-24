@@ -659,7 +659,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
   z-index: 10;
 }
 .modal {
@@ -668,12 +668,20 @@ button {
   padding: 32px;
   max-width: 640px;
   width: 100%;
+  /* a long window scrolls inside, so its buttons can always be reached */
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
+.modal > * {
+  flex-shrink: 0;
+}
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
@@ -1767,4 +1775,86 @@ button {
 }
 .wp-option b {
   font-size: 1.2rem;
+}
+
+/* ---------- version, pre-exam check ---------- */
+.version {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 24px 0 8px;
+  unicode-bidi: plaintext;
+}
+.check-modal {
+  max-width: 760px;
+}
+.pec-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.pec-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pec-row:last-child {
+  border-bottom: 0;
+}
+.pec-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex: none;
+}
+.pec-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+}
+.pec-detail {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.pec-row.is-bad .pec-detail {
+  color: #a32020;
+}
+
+/* ---------- accessibility floor: every control at least 60px, easy to tap ---------- */
+.btn,
+.btn-small,
+.btn-icon,
+.speed-btn,
+.teacher-entry,
+.segmented button,
+.mode-toggle button,
+.pin-key,
+.chip,
+.option-speak,
+.wp-word,
+.wp-option {
+  min-height: 60px;
+  min-width: 60px;
+}
+.text-input,
+.select {
+  min-height: 60px;
+}
+.link-btn {
+  min-height: 60px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+}
+label.check-row {
+  min-height: 60px;
+  align-items: center;
+}
+label.check-row input[type='checkbox'] {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  accent-color: var(--primary);
 }

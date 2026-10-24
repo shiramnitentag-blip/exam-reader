@@ -222,7 +222,7 @@ export const db = {
       cursor.delete();
       cursor.continue();
     };
-    for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`]) tx.objectStore('meta').delete(k);
+    for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`, `screen:${examId}`]) tx.objectStore('meta').delete(k);
     await txDone(tx);
     return recIds.length;
   },
@@ -324,16 +324,30 @@ export const db = {
   async getRecordingBlob(id: string): Promise<Blob | null> {
     const rec = await this.getRecording(id);
     if (!rec) return null;
-    if (rec.blob) return rec.blob;
-    const range = IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
-    const chunks: { blob: Blob }[] = await reqToPromise(
-      (await store('chunks', 'readonly')).getAll(range),
-    );
+    // A fresh Blob from the bytes: Safari on the iPad sometimes cannot play a Blob read back as is.
+    const fresh = async (parts: Blob[]) => {
+      try {
+        const bytes = await Promise.all(parts.map((b) => b.arrayBuffer()));
+        return new Blob(bytes, { type: rec.mimeType });
+      } catch {
+        return new Blob(parts, { type: rec.mimeType });
+      }
+    };
+    if (rec.blob) return fresh([rec.blob]);
+    // A recording that was cut off (the app closed): put it together from the pieces saved every second.
+    const chunks = await this.getChunks(id);
     if (chunks.length === 0) return null;
-    return new Blob(
-      chunks.map((c) => c.blob),
-      { type: rec.mimeType },
-    );
+    return fresh(chunks);
+  },
+  async getChunks(id: string): Promise<Blob[]> {
+    const range = IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
+    const chunks: { blob: Blob }[] = await reqToPromise((await store('chunks', 'readonly')).getAll(range));
+    return chunks.map((c) => c.blob);
+  },
+  /** After the whole recording is saved in one piece, its one-second pieces are not needed. */
+  async deleteChunks(id: string) {
+    const range = IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
+    await reqToPromise((await store('chunks', 'readwrite')).delete(range));
   },
 
   // ---- small settings ----

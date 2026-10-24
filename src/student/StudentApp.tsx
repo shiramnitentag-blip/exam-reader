@@ -14,14 +14,14 @@ import { PHRASES, questionPhrase } from './phrases';
 
 type Screen = { name: 'intro' } | { name: 'question'; index: number } | { name: 'finish' } | { name: 'done' };
 
-function loadScreen(examId: string): Screen {
+function loadScreen(examId: string): Screen | null {
   try {
     const raw = localStorage.getItem(`screen:${examId}`);
     if (raw) return JSON.parse(raw) as Screen;
   } catch {
     /* ignore */
   }
-  return { name: 'intro' };
+  return null;
 }
 
 /** All the sentences of an item that the voice reads, following its read mode and nikud. */
@@ -38,7 +38,7 @@ export function itemSegments(item: Item): Segment[] {
 export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => void }) {
   const items = exam.items;
   const [loaded, setLoaded] = useState(false);
-  const [screen, setScreenState] = useState<Screen>(() => loadScreen(exam.id));
+  const [screen, setScreenState] = useState<Screen>(() => loadScreen(exam.id) ?? { name: 'intro' });
   const [showPassage, setShowPassage] = useState(false);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [saveError, setSaveError] = useState(false);
@@ -48,13 +48,19 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
 
   // Load this exam's saved answers from the device.
   useEffect(() => {
-    Promise.all([db.getAnswers(exam.id), db.getMeta<boolean>(`submitted:${exam.id}`)])
-      .then(([list, submitted]) => {
+    Promise.all([
+      db.getAnswers(exam.id),
+      db.getMeta<boolean>(`submitted:${exam.id}`),
+      db.getMeta<Screen>(`screen:${exam.id}`).catch(() => undefined),
+    ])
+      .then(([list, submitted, savedScreen]) => {
         const map: Record<string, Answer> = {};
         list.forEach((a) => (map[a.itemId] = a));
         answersRef.current = map;
         setAnswers(map);
         if (submitted) setScreenState({ name: 'done' });
+        // The question she was on is kept in two places; if the quick one was lost, use the other.
+        else if (!loadScreen(exam.id) && savedScreen) setScreenState(savedScreen);
       })
       .catch(() => setSaveError(true))
       .finally(() => setLoaded(true));
@@ -70,6 +76,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
       } catch {
         /* ignore */
       }
+      void db.setMeta(`screen:${exam.id}`, s).catch(() => {});
       mainRef.current?.scrollTo({ top: 0 });
     },
     [exam.id],

@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../version';
 import { useEffect, useState } from 'react';
 import { db } from '../db';
 import { hebrewError, testConnection } from '../claude';
@@ -169,6 +170,9 @@ export function Settings({ onBack }: { onBack: () => void }) {
             )}
             {pinMsg && <div className="notice ok">✅ {pinMsg}</div>}
           </div>
+          <p className="version">
+            גִּרְסָה {APP_VERSION}
+          </p>
         </div>
       </main>
     </div>

@@ -31,6 +31,9 @@ export function Recorder({
   const [playing, setPlaying] = useState(false);
   const [totalSec, setTotalSec] = useState(0);
   const [savedCount, setSavedCount] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  const activeIdRef = useRef<string | null>(null); // the recording in progress
+  const stopReasonRef = useRef<string | null>(null);
 
   const [urls, setUrls] = useState<string[]>([]);
 
@@ -56,6 +59,9 @@ export function Recorder({
       const recs = await Promise.all(answer.clipIds.map((id) => db.getRecording(id)));
       const blobs = await Promise.all(answer.clipIds.map((id) => db.getRecordingBlob(id)));
       if (cancelled) return;
+      // A recording that has no sound at all (the app closed in its first second) is removed.
+      const empty = answer.clipIds.filter((id, i) => !blobs[i] && id !== activeIdRef.current);
+      if (empty.length > 0) update((a) => ({ ...a, clipIds: a.clipIds.filter((c) => !empty.includes(c)) }));
       setTotalSec(recs.reduce((sum, r) => sum + (r?.durationSec ?? 0), 0));
       made = blobs.filter((b): b is Blob => !!b).map((b) => URL.createObjectURL(b));
       setUrls(made);
@@ -90,6 +96,8 @@ export function Recorder({
 
   async function start(action: Action) {
     setError(null);
+    setNotice(null);
+    stopReasonRef.current = null;
     speech.stop();
     stopPlayback();
     setStatus('starting');
@@ -119,14 +127,17 @@ export function Recorder({
     const createdAt = Date.now();
     const pieces: Blob[] = [];
     let index = 0;
-    let writes: Promise<unknown> = db.putRecording({
+    const meta = (durationSec: number) => ({
       id,
       examId: answer.examId,
       questionId: answer.itemId,
       mimeType,
       createdAt,
-      durationSec: 0,
+      durationSec,
     });
+    let writes: Promise<unknown> = db.putRecording(meta(0));
+    let writeFailed = false;
+    activeIdRef.current = id;
     const previous = answer.clipIds;
 
     // Link the new recording to the answer right away, so nothing is lost if the app closes.
@@ -137,11 +148,40 @@ export function Recorder({
       if (e.data && e.data.size > 0) {
         pieces.push(e.data);
         const i = index++;
-        writes = writes.then(() => db.putChunk(id, i, e.data));
+        const sec = (Date.now() - createdAt) / 1000;
+        // Each second is saved at once, with the length so far: if the app closes, the answer is
+        // kept up to that moment.
+        writes = writes
+          .then(() => db.putChunk(id, i, e.data))
+          .then(() => db.putRecording(meta(sec)))
+          .catch(() => {
+            writeFailed = true;
+          });
       }
     };
 
+    // Stop (and save) when she leaves the app, the screen turns off, or another app takes the mic.
+    const stopFor = (reason: string) => {
+      if (mr.state === 'inactive') return;
+      stopReasonRef.current = reason;
+      try {
+        mr.stop();
+      } catch {
+        /* already stopped */
+      }
+    };
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') stopFor('hidden');
+    };
+    const onPageHide = () => stopFor('hidden');
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    stream.getAudioTracks().forEach((t) => (t.onended = () => stopFor('mic')));
+    mr.onerror = () => stopFor('error');
+
     mr.onstop = async () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
       stream.getTracks().forEach((t) => t.stop());
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
@@ -155,23 +195,28 @@ export function Recorder({
           update((a) => ({ ...a, clipIds: a.clipIds.filter((c) => c !== id) }));
           setError('הַהַקְלָטָה רֵיקָה. נַסִּי שׁוּב.');
         } else {
-          await db.putRecording({
-            id,
-            examId: answer.examId,
-            questionId: answer.itemId,
-            mimeType,
-            createdAt,
-            durationSec,
-            blob,
-          });
+          try {
+            await db.putRecording({ ...meta(durationSec), blob });
+            // The recording is now saved in one piece: its one-second pieces can go.
+            await db.deleteChunks(id).catch(() => {});
+          } catch (e) {
+            // Not saved in one piece (maybe no space): the one-second pieces still hold it.
+            if (writeFailed) throw e;
+            await db.putRecording(meta(durationSec)).catch(() => {});
+          }
           if (action === 'replace') {
             update((a) => ({ ...a, clipIds: a.clipIds.filter((c) => !previous.includes(c)) }));
           }
           setSavedCount((n) => n + 1);
+          const reason = stopReasonRef.current;
+          if (reason === 'hidden') setNotice('הַהַקְלָטָה נֶעֶצְרָה כְּשֶׁיָּצָאת מֵהָאַפְּלִיקַצְיָה. מָה שֶׁהֻקְלַט עַד אָז נִשְׁמַר.');
+          else if (reason === 'mic' || reason === 'error') setNotice('הַהַקְלָטָה נֶעֶצְרָה. מָה שֶׁהֻקְלַט עַד אָז נִשְׁמַר.');
         }
-      } catch {
-        setError('הָיְתָה בְּעָיָה בִּשְׁמִירָה. נַסִּי שׁוּב.');
+      } catch (e) {
+        const full = e instanceof DOMException && e.name === 'QuotaExceededError';
+        setError(full ? 'אֵין מַסְפִּיק מָקוֹם בָּאַיְפֶּד. קִרְאִי לַמּוֹרָה.' : 'הָיְתָה בְּעָיָה בִּשְׁמִירָה. קִרְאִי לַמּוֹרָה.');
       }
+      activeIdRef.current = null;
       setStatus('idle');
     };
 
@@ -276,6 +321,7 @@ export function Recorder({
         </>
       )}
 
+      {notice && <div className="notice">{notice}</div>}
       {error && <div className="notice error">{error}</div>}
     </div>
   );
