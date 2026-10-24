@@ -11,18 +11,9 @@ import { Dictation } from '../components/Dictation';
 import { ChoiceOptions, optionSegments } from '../components/Choice';
 import { Modal } from '../components/Modal';
 import { PHRASES, questionPhrase } from './phrases';
+import { loadPlace, savePlace, type ExamStatus } from './status';
 
-type Screen = { name: 'intro' } | { name: 'question'; index: number } | { name: 'finish' } | { name: 'done' };
-
-function loadScreen(examId: string): Screen | null {
-  try {
-    const raw = localStorage.getItem(`screen:${examId}`);
-    if (raw) return JSON.parse(raw) as Screen;
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
+type Screen = import('./status').SavedScreen;
 
 /** All the sentences of an item that the voice reads, following its read mode and nikud. */
 export function itemSegments(item: Item): Segment[] {
@@ -35,10 +26,20 @@ export function itemSegments(item: Item): Segment[] {
   return out;
 }
 
-export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => void }) {
+export function StudentApp({
+  exam,
+  entry,
+  onHome,
+}: {
+  exam: Exam;
+  /** 'new': start from the instructions; 'progress': go on exactly where she stopped. */
+  entry: Exclude<ExamStatus, 'none' | 'submitted'>;
+  onHome: () => void;
+}) {
   const items = exam.items;
   const [loaded, setLoaded] = useState(false);
-  const [screen, setScreenState] = useState<Screen>(() => loadScreen(exam.id) ?? { name: 'intro' });
+  const [screen, setScreenState] = useState<Screen>({ name: 'intro' });
+  const lastQuestion = useRef(0);
   const [showPassage, setShowPassage] = useState(false);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [saveError, setSaveError] = useState(false);
@@ -48,19 +49,19 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
 
   // Load this exam's saved answers from the device.
   useEffect(() => {
-    Promise.all([
-      db.getAnswers(exam.id),
-      db.getMeta<boolean>(`submitted:${exam.id}`),
-      db.getMeta<Screen>(`screen:${exam.id}`).catch(() => undefined),
-    ])
-      .then(([list, submitted, savedScreen]) => {
+    Promise.all([db.getAnswers(exam.id), db.getMeta<boolean>(`submitted:${exam.id}`), loadPlace(exam.id)])
+      .then(([list, submitted, place]) => {
         const map: Record<string, Answer> = {};
         list.forEach((a) => (map[a.itemId] = a));
         answersRef.current = map;
         setAnswers(map);
+        lastQuestion.current = Math.min(place.lastQuestion, Math.max(0, items.length - 1));
         if (submitted) setScreenState({ name: 'done' });
-        // The question she was on is kept in two places; if the quick one was lost, use the other.
-        else if (!loadScreen(exam.id) && savedScreen) setScreenState(savedScreen);
+        else if (entry === 'progress') {
+          // Exactly where she stopped: the question (or the review before submitting) she was on.
+          const s = place.screen;
+          setScreenState(s && (s.name === 'question' || s.name === 'finish') ? s : { name: 'question', index: lastQuestion.current });
+        } else setScreenState(exam.instructions.length > 0 ? { name: 'intro' } : { name: 'question', index: 0 });
       })
       .catch(() => setSaveError(true))
       .finally(() => setLoaded(true));
@@ -71,12 +72,8 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
       speech.stop();
       setShowPassage(false);
       setScreenState(s);
-      try {
-        localStorage.setItem(`screen:${exam.id}`, JSON.stringify(s));
-      } catch {
-        /* ignore */
-      }
-      void db.setMeta(`screen:${exam.id}`, s).catch(() => {});
+      if (s.name === 'question') lastQuestion.current = s.index;
+      savePlace(exam.id, s);
       mainRef.current?.scrollTo({ top: 0 });
     },
     [exam.id],
@@ -112,7 +109,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
   if (screen.name === 'intro' || items.length === 0) {
     const started = Object.keys(answers).length > 0;
     const introSegs = exam.instructions.flatMap((b) => segmentsFor(shown(b.text, true), b.id, b.lang, 'normal'));
-    header = <Header title={exam.title} onTeacher={onTeacher} />;
+    header = <Header title={exam.title} onHome={onHome} />;
     body = (
       <div className="page narrow">
         <SpeakText as="h1" className="title" sentences={[{ id: 'exam-title', text: exam.title }]} />
@@ -134,7 +131,7 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
               void requestPersistentStorage();
               void ensureSession(exam.id).catch(() => {});
               keepScreenOn(true);
-              goQuestion(0);
+              goQuestion(started ? lastQuestion.current : 0);
             }}
           >
             {started ? 'לְהַמְשִׁיךְ' : 'לְהַתְחִיל'} ←
@@ -180,8 +177,8 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
     header = <Header title="לִפְנֵי הַהַגָּשָׁה" />;
     body = <FinishView items={items} answers={answers} onGo={goQuestion} onSubmit={() => setConfirmSubmit(true)} />;
   } else {
-    header = <Header title={exam.title} onTeacher={onTeacher} />;
-    body = <DoneView />;
+    header = <Header title={exam.title} />;
+    body = <DoneView onHome={onHome} />;
   }
 
   const showNav = (screen.name === 'question' || screen.name === 'finish') && items.length > 0;
@@ -210,10 +207,18 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
           onNo={() => setConfirmSubmit(false)}
           onYes={async () => {
             setConfirmSubmit(false);
-            await db.setMeta(`submitted:${exam.id}`, true).catch(() => setSaveError(true));
-            await db.setMeta(`submittedAt:${exam.id}`, Date.now()).catch(() => {});
-            keepScreenOn(false);
+            // The success screen and its voice start right inside the tap (the iPad allows sound only then).
             setScreen({ name: 'done' });
+            speech.speak(DONE_SEGMENTS);
+            keepScreenOn(false);
+            try {
+              await db.setMeta(`submitted:${exam.id}`, true);
+              await db.setMeta(`submittedAt:${exam.id}`, Date.now()).catch(() => {});
+            } catch {
+              // Not saved: back to the page before submitting, with the warning, so she can try again.
+              setSaveError(true);
+              setScreen({ name: 'finish' });
+            }
           }}
         />
       )}
@@ -224,11 +229,11 @@ export function StudentApp({ exam, onTeacher }: { exam: Exam; onTeacher: () => v
 export function Header({
   title,
   onInstructions,
-  onTeacher,
+  onHome,
 }: {
   title: string;
   onInstructions?: () => void;
-  onTeacher?: () => void;
+  onHome?: () => void;
 }) {
   return (
     <header className="header">
@@ -240,9 +245,9 @@ export function Header({
           </button>
         )}
         <SpeedControl />
-        {onTeacher && (
-          <button className="btn btn-small teacher-entry" onClick={onTeacher} aria-label="מצב מורה">
-            🔒
+        {onHome && (
+          <button className="btn btn-small home-entry" onClick={onHome}>
+            🏠 מָסָךְ רָאשִׁי
           </button>
         )}
       </div>
@@ -499,16 +504,27 @@ function FinishView({
   );
 }
 
-function DoneView() {
-  const msg: Segment[] = [
-    { id: 'done-0', text: PHRASES.submitted },
-    { id: 'done-1', text: PHRASES.wellDone },
-  ];
+const DONE_SEGMENTS: Segment[] = [
+  { id: 'done-0', text: PHRASES.submittedOk },
+  { id: 'done-1', text: PHRASES.wellDone },
+];
+
+/** After submitting: read aloud at once (started from the "submit" tap), then back to the opening screen. */
+function DoneView({ onHome }: { onHome: () => void }) {
   return (
     <div className="page narrow center">
       <div className="done-icon">🎉</div>
-      <SpeakText as="h1" className="title" sentences={msg} />
-      <ReadButton segments={msg} />
+      <SpeakText as="h1" className="title" sentences={DONE_SEGMENTS} />
+      <ReadButton segments={DONE_SEGMENTS} />
+      <button
+        className="btn btn-primary btn-huge"
+        onClick={() => {
+          speech.stop();
+          onHome();
+        }}
+      >
+        🏠 חֲזָרָה לַמָּסָךְ הָרָאשִׁי
+      </button>
     </div>
   );
 }

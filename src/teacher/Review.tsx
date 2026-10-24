@@ -1,4 +1,5 @@
 // Review screen: the teacher checks and fixes everything before the student sees the exam.
+import { HomeButton } from './HomeButton';
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../db';
 import { hebrewError } from '../claude';
@@ -34,11 +35,13 @@ export function Review({
   activeId,
   onMakeActive,
   onBack,
+  onHome,
 }: {
   examId: string;
   activeId: string;
   onMakeActive: (id: string) => Promise<void>;
   onBack: () => void;
+  onHome: () => void;
 }) {
   const [exam, setExam] = useState<Exam | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -215,6 +218,7 @@ export function Review({
           <button className="btn btn-small" onClick={onBack}>
             → לָרְשִׁימָה
           </button>
+          <HomeButton onHome={onHome} />
         </div>
       </header>
       <main className="main">

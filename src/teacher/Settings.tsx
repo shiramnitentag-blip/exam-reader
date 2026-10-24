@@ -1,4 +1,5 @@
 import { APP_VERSION } from '../version';
+import { HomeButton } from './HomeButton';
 import { useEffect, useState } from 'react';
 import { db } from '../db';
 import { hebrewError, testConnection } from '../claude';
@@ -7,7 +8,7 @@ import { setPin } from './pin';
 import { VoiceSettings } from './VoiceSettings';
 
 /** API key (kept only on this device) and PIN change. */
-export function Settings({ onBack }: { onBack: () => void }) {
+export function Settings({ onBack, onHome }: { onBack: () => void; onHome: () => void }) {
   const [key, setKey] = useState('');
   const [saved, setSaved] = useState('');
   const [show, setShow] = useState(false);
@@ -60,6 +61,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
           <button className="btn btn-small" onClick={onBack}>
             → חֲזָרָה
           </button>
+          <HomeButton onHome={onHome} />
         </div>
       </header>
       <main className="main">

@@ -1,15 +1,17 @@
-// Top level: student mode by default; teacher mode only through the PIN.
+// Top level: the opening screen always comes first; the exam from there; teacher mode only through the PIN.
 import { useCallback, useEffect, useState } from 'react';
 import { db } from './db';
 import type { Exam } from './model';
 import { sampleExam, SAMPLE_ID } from './sampleExam';
-import { StudentApp, Header } from './student/StudentApp';
+import { StudentApp } from './student/StudentApp';
+import { Home } from './student/Home';
+import { examStatus, type ExamStatus } from './student/status';
 import { PinScreen } from './teacher/PinScreen';
 import { TeacherApp, getActiveExamId } from './teacher/TeacherApp';
 import { speech } from './speech';
 import { loadTTSSettings } from './tts';
 
-type Mode = 'student' | 'pin' | 'teacher';
+type Mode = 'home' | 'exam' | 'pin' | 'teacher';
 
 /** The exam the student sees: the active one, only if the teacher approved it. */
 async function loadActiveExam(): Promise<Exam | null> {
@@ -20,54 +22,54 @@ async function loadActiveExam(): Promise<Exam | null> {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>('student');
+  const [mode, setMode] = useState<Mode>('home');
   const [exam, setExam] = useState<Exam | null | undefined>(undefined);
+  const [status, setStatus] = useState<ExamStatus>('none');
 
+  /** Reads the active exam and where she stands in it (after start, teacher mode, or the exam). */
   const refresh = useCallback(() => {
     // Which voices the ready-made files were made with (set by the teacher).
     loadTTSSettings()
       .then((t) => speech.setFileVoices({ he: t.voiceHe, en: t.voiceEn }))
       .catch(() => {});
     loadActiveExam()
-      .then(setExam)
-      .catch(() => setExam(sampleExam)); // storage not available: at least the sample works
+      .catch(() => sampleExam) // storage not available: at least the sample works
+      .then(async (ex) => {
+        const st = await examStatus(ex).catch((): ExamStatus => (ex ? 'new' : 'none'));
+        setStatus(st);
+        setExam(ex);
+      });
   }, []);
 
   useEffect(refresh, [refresh]);
 
-  const toTeacher = () => {
+  const toHome = () => {
     speech.stop();
-    setMode('pin');
+    refresh();
+    setMode('home');
   };
 
-  if (mode === 'pin') return <PinScreen onSuccess={() => setMode('teacher')} onCancel={() => setMode('student')} />;
+  if (mode === 'pin') return <PinScreen onSuccess={() => setMode('teacher')} onCancel={toHome} />;
 
-  if (mode === 'teacher')
-    return (
-      <TeacherApp
-        onExit={() => {
-          speech.stop();
-          refresh();
-          setMode('student');
-        }}
-      />
-    );
+  if (mode === 'teacher') return <TeacherApp onExit={toHome} />;
 
   if (exam === undefined) return <div className="boot-msg">טוֹעֶנֶת…</div>;
 
-  if (exam === null)
-    return (
-      <div className="app">
-        <Header title="מִבְחָן בְּקוֹל" onTeacher={toTeacher} />
-        <main className="main">
-          <div className="page narrow center">
-            <div className="done-icon">⏳</div>
-            <h1 className="title">הַמִּבְחָן עוֹד לֹא מוּכָן.</h1>
-            <p className="big-text">קִרְאִי לַמּוֹרָה.</p>
-          </div>
-        </main>
-      </div>
-    );
+  if (mode === 'exam' && exam && (status === 'new' || status === 'progress'))
+    return <StudentApp key={exam.id} exam={exam} entry={status} onHome={toHome} />;
 
-  return <StudentApp key={exam.id} exam={exam} onTeacher={toTeacher} />;
+  return (
+    <Home
+      exam={exam}
+      status={exam ? status : 'none'}
+      onStart={() => {
+        speech.stop();
+        setMode('exam');
+      }}
+      onTeacher={() => {
+        speech.stop();
+        setMode('pin');
+      }}
+    />
+  );
 }

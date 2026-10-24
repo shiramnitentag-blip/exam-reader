@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { HomeButton } from './HomeButton';
 import { db } from '../db';
 import { extractExam, hebrewError, type Progress, type SourceInput } from '../claude';
 import { blobToBase64, fileKind, prepareImage, readDocx, type PreparedImage } from '../files';
@@ -10,10 +11,12 @@ type Step = { key: string; label: string; state: 'wait' | 'run' | 'done' | 'erro
 
 export function Upload({
   onBack,
+  onHome,
   onSettings,
   onDone,
 }: {
   onBack: () => void;
+  onHome: () => void;
   onSettings: () => void;
   onDone: (examId: string) => void;
 }) {
@@ -262,6 +265,7 @@ export function Upload({
           <button className="btn btn-small" onClick={onBack}>
             → חֲזָרָה
           </button>
+          <HomeButton onHome={onHome} />
         </div>
       </header>
       <main className="main">

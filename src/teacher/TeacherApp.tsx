@@ -1,4 +1,6 @@
 // Teacher mode: exam list, settings, upload, review.
+import { HomeButton } from './HomeButton';
+import { forgetPlace } from '../student/status';
 import { useCallback, useEffect, useState } from 'react';
 import { db } from '../db';
 import type { Exam } from '../model';
@@ -63,14 +65,15 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
     setMessage('הַמִּבְחָן הוּגְדַּר כְּפָעִיל. זֶה הַמִּבְחָן שֶׁהַתַּלְמִידָה תִּרְאֶה.');
   }
 
-  if (view.name === 'settings') return <Settings onBack={() => setView({ name: 'home' })} />;
+  if (view.name === 'settings') return <Settings onBack={() => setView({ name: 'home' })} onHome={onExit} />;
   if (view.name === 'answers')
-    return <AnswersList onBack={() => setView({ name: 'home' })} onOpen={(id) => setView({ name: 'answer', examId: id })} />;
-  if (view.name === 'answer') return <AnswersDetail examId={view.examId} onBack={() => setView({ name: 'answers' })} />;
+    return <AnswersList onBack={() => setView({ name: 'home' })} onHome={onExit} onOpen={(id) => setView({ name: 'answer', examId: id })} />;
+  if (view.name === 'answer') return <AnswersDetail examId={view.examId} onBack={() => setView({ name: 'answers' })} onHome={onExit} />;
   if (view.name === 'upload')
     return (
       <Upload
         onBack={() => setView({ name: 'home' })}
+        onHome={onExit}
         onSettings={() => setView({ name: 'settings' })}
         onDone={(id) => setView({ name: 'review', examId: id })}
       />
@@ -82,6 +85,7 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
         activeId={activeId}
         onMakeActive={makeActive}
         onBack={() => setView({ name: 'home' })}
+        onHome={onExit}
       />
     );
 
@@ -96,9 +100,7 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
           <button className="btn btn-small" onClick={() => setView({ name: 'settings' })}>
             ⚙️ הַגְדָּרוֹת
           </button>
-          <button className="btn btn-small" onClick={onExit}>
-            🚪 יְצִיאָה לְמַצַּב תַּלְמִידָה
-          </button>
+          <HomeButton onHome={onExit} />
         </div>
       </header>
       <main className="main">
@@ -177,11 +179,7 @@ export function TeacherApp({ onExit }: { onExit: () => void }) {
                           yes: 'כֵּן, לְאַפֵּס',
                           action: async () => {
                             await db.deleteExamData(ex.id);
-                            try {
-                              localStorage.removeItem(`screen:${ex.id}`);
-                            } catch {
-                              /* ignore */
-                            }
+                            forgetPlace(ex.id);
                             setMessage('הַתְּשׁוּבוֹת נִמְחֲקוּ.');
                           },
                         })

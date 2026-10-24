@@ -1,4 +1,6 @@
 // "Answers" in teacher mode: which exams were answered, and everything the student answered.
+import { HomeButton } from './HomeButton';
+import { forgetPlace, reopenExam } from '../student/status';
 import { useEffect, useState } from 'react';
 import { db } from '../db';
 import { Modal } from '../components/Modal';
@@ -20,7 +22,7 @@ import { buildPdf } from '../pdf';
 import { speech } from '../speech';
 import { MediaList } from '../components/Media';
 
-export function AnswersList({ onBack, onOpen }: { onBack: () => void; onOpen: (examId: string) => void }) {
+export function AnswersList({ onBack, onHome, onOpen }: { onBack: () => void; onHome: () => void; onOpen: (examId: string) => void }) {
   const [list, setList] = useState<Summary[] | null>(null);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export function AnswersList({ onBack, onOpen }: { onBack: () => void; onOpen: (e
           <button className="btn btn-small" onClick={onBack}>
             → חֲזָרָה
           </button>
+          <HomeButton onHome={onHome} />
         </div>
       </header>
       <main className="main">
@@ -72,7 +75,7 @@ export function AnswersList({ onBack, onOpen }: { onBack: () => void; onOpen: (e
 
 type Making = { state: 'idle' | 'making' | 'ready' | 'none' | 'error'; file?: File; msg?: string };
 
-export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () => void }) {
+export function AnswersDetail({ examId, onBack, onHome }: { examId: string; onBack: () => void; onHome: () => void }) {
   const [report, setReport] = useState<Report | null | undefined>(undefined);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [pdf, setPdf] = useState<Making>({ state: 'idle' });
@@ -80,6 +83,8 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
   const [zip, setZip] = useState<Making>({ state: 'idle' });
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
   const [deleted, setDeleted] = useState(false);
+  const [confirmReopen, setConfirmReopen] = useState(false);
+  const [reopened, setReopened] = useState(false);
 
   useEffect(() => {
     speech.stop();
@@ -115,6 +120,7 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
         <button className="btn btn-small" onClick={onBack}>
           → לָרְשִׁימָה
         </button>
+        <HomeButton onHome={onHome} />
       </div>
     </header>
   );
@@ -183,6 +189,15 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
                 <b>נַעֲנוּ:</b> {answeredCount} מִתּוֹךְ {report.items.length}
               </div>
             </div>
+            {report.status === 'submitted' && (
+              <div className="reopen-row">
+                <button className="btn" onClick={() => setConfirmReopen(true)}>
+                  🔓 לִפְתֹּחַ מֵחָדָשׁ לְהֶמְשֵׁךְ
+                </button>
+                <span className="help">הַתַּלְמִידָה תּוּכַל לְהַמְשִׁיךְ וּלְשַׁנּוֹת תְּשׁוּבוֹת, וּלְהַגִּישׁ שׁוּב.</span>
+              </div>
+            )}
+            {reopened && <div className="notice ok">✅ הַמִּבְחָן נִפְתַּח מֵחָדָשׁ. בַּמָּסָךְ הָרָאשִׁי יוֹפִיעַ "לְהַמְשִׁיךְ מִבְחָן".</div>}
 
             <h2 className="section-title">יִצּוּא</h2>
             <div className="export-row">
@@ -245,6 +260,20 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
 
       <PrintSheet report={report} />
 
+      {confirmReopen && (
+        <Modal
+          text={`לִפְתֹּחַ מֵחָדָשׁ אֶת "${report.exam.title}"? הַמִּבְחָן יַחֲזֹר לְמַצַּב "בְּתַהֲלִיךְ", וְהַתַּלְמִידָה תּוּכַל לְהַמְשִׁיךְ מֵהַמָּקוֹם שֶׁבּוֹ הִגִּישָׁה.`}
+          yes="כֵּן, לִפְתֹּחַ"
+          no="בִּטּוּל"
+          onNo={() => setConfirmReopen(false)}
+          onYes={async () => {
+            setConfirmReopen(false);
+            await reopenExam(examId);
+            setReport({ ...report, status: 'progress' });
+            setReopened(true);
+          }}
+        />
+      )}
       {confirmStep === 1 && (
         <Modal
           text={`לִמְחֹק אֶת כָּל הַתְּשׁוּבוֹת וְהַהַקְלָטוֹת שֶׁל "${report.exam.title}"?`}
@@ -265,11 +294,7 @@ export function AnswersDetail({ examId, onBack }: { examId: string; onBack: () =
           onYes={async () => {
             setConfirmStep(0);
             await db.deleteExamData(examId);
-            try {
-              localStorage.removeItem(`screen:${examId}`);
-            } catch {
-              /* ignore */
-            }
+            forgetPlace(examId);
             setDeleted(true);
           }}
         />

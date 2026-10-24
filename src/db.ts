@@ -222,7 +222,7 @@ export const db = {
       cursor.delete();
       cursor.continue();
     };
-    for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`, `screen:${examId}`]) tx.objectStore('meta').delete(k);
+    for (const k of [`submitted:${examId}`, `submittedAt:${examId}`, `session:${examId}`, `screen:${examId}`, `lastq:${examId}`]) tx.objectStore('meta').delete(k);
     await txDone(tx);
     return recIds.length;
   },

@@ -1946,3 +1946,41 @@ label.check-row input[type='checkbox'] {
   flex: none;
   accent-color: var(--primary);
 }
+
+/* ---------- opening screen ---------- */
+.home {
+  gap: 20px;
+}
+.home-icon {
+  font-size: 4.5rem;
+  line-height: 1.2;
+}
+.home-hint {
+  color: var(--ink);
+  max-width: 34em;
+}
+.home-btn {
+  width: 100%;
+  max-width: 560px;
+  min-height: 110px;
+  font-size: 1.7rem;
+}
+.home-btn.done,
+.home-btn.done:disabled {
+  background: var(--green-bg);
+  border-color: var(--green);
+  color: #1d5235;
+  opacity: 1;
+  cursor: default;
+}
+.gear {
+  font-size: 1.6rem;
+  padding: 0;
+}
+.reopen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
