@@ -1672,7 +1672,7 @@ button {
 }
 .crop-surface img {
   max-width: 100%;
-  max-height: 62dvh;
+  max-height: 55dvh;
   display: block;
   pointer-events: none;
 }
@@ -1692,6 +1692,94 @@ button {
 .crop-controls .text-input {
   flex: 1;
   min-width: 220px;
+}
+.crop-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crop-pages,
+.crop-main,
+.crop-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.crop-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.crop-page-no {
+  font-weight: 700;
+  text-align: center;
+}
+.crop-nav .btn {
+  white-space: nowrap;
+}
+
+/* Landscape: page list and settings in a side column that stays in place; the page fills the
+   rest of the height, so there is no scrolling between choosing a page and cutting. */
+@media (orientation: landscape) and (min-width: 900px) {
+  .crop-body {
+    overflow: hidden;
+  }
+  .crop-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'pages main'
+      'form main';
+    gap: 12px 20px;
+  }
+  .crop-pages {
+    grid-area: pages;
+    min-height: 0;
+  }
+  .crop-main {
+    grid-area: main;
+    min-height: 0;
+  }
+  .crop-form {
+    grid-area: form;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .crop-nav {
+    flex-wrap: wrap;
+  }
+  .crop-page-no {
+    order: -1;
+    flex-basis: 100%;
+  }
+  .crop-nav .btn {
+    flex: 1;
+  }
+  .crop-thumbs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: auto;
+    max-height: 32dvh;
+  }
+  .crop-thumb img {
+    height: 80px;
+  }
+  .crop-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .crop-controls .select,
+  .crop-controls .text-input {
+    width: 100%;
+    min-width: 0;
+  }
+  .crop-surface img {
+    max-height: calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
 }
 
 /* ---------- long press on a word ---------- */

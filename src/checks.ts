@@ -1,4 +1,4 @@
-// Device checks for the teacher: free space, microphone, battery, protected storage.
+// Device checks for the teacher: free space, microphone, protected storage.
 
 /** Below this much free space the teacher is warned (recordings take about 1 MB a minute). */
 export const LOW_SPACE_MB = 300;
@@ -31,20 +31,6 @@ export async function checkMicrophone(): Promise<{ ok: boolean; detail: string }
         ? 'לֹא אֻשַּׁר. בַּהַגְדָּרוֹת שֶׁל הָאַיְפֶּד: Safari ← מִיקְרוֹפוֹן ← "לְאַפְשֵׁר"'
         : 'לֹא נִמְצָא מִיקְרוֹפוֹן',
     };
-  }
-}
-
-type BatteryLike = { level: number; charging: boolean };
-
-/** Battery level, where the browser tells it (Safari on the iPad does not). */
-export async function batteryInfo(): Promise<BatteryLike | null> {
-  try {
-    const get = (navigator as Navigator & { getBattery?: () => Promise<BatteryLike> }).getBattery;
-    if (!get) return null;
-    const b = await get.call(navigator);
-    return { level: b.level, charging: b.charging };
-  } catch {
-    return null;
   }
 }
 

@@ -143,88 +143,111 @@ export function CropTool({
       <div className="crop-body">
         {error && <div className="notice error">❌ {error}</div>}
         {!pages && !error && <div className="help">⏳ פּוֹתַחַת אֶת הַקֹּבֶץ…</div>}
-        {pages && pages.length > 1 && (
-          <div className="crop-thumbs">
-            {pages.map((_, i) => (
-              <button key={i} className={`crop-thumb ${i === pageNo ? 'on' : ''}`} onClick={() => setPageNo(i)}>
-                {thumbs[i] ? <img src={thumbs[i]} alt="" /> : <span>⏳</span>}
-                <span>עַמּוּד {i + 1}</span>
-              </button>
-            ))}
-          </div>
-        )}
         {pages && (
-          <>
-            <p className="help">סַמְּנִי בָּאֶצְבַּע מַלְבֵּן סְבִיב הַתְּמוּנָה: גְּרָרִי מִפִּנָּה לְפִנָּה.</p>
-            <div className="crop-stage">
-              {pageUrl ? (
-                <div
-                  ref={surface}
-                  className="crop-surface"
-                  onPointerDown={(e) => {
-                    try {
-            (e.currentTarget as Element).setPointerCapture?.(e.pointerId); // keep following the finger
-          } catch {
-            /* not possible for this pointer; the gesture still works inside the area */
-          }
-                    const p = point(e);
-                    drag.current = p;
-                    setRect({ x: p.x, y: p.y, w: 0, h: 0 });
-                    setSaved('');
-                  }}
-                  onPointerMove={(e) => {
-                    const s = drag.current;
-                    if (!s) return;
-                    const p = point(e);
-                    setRect({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
-                  }}
-                  onPointerUp={() => {
-                    drag.current = null;
-                    setRect((r) => (r && r.w > 0.02 && r.h > 0.02 ? r : null));
-                  }}
-                >
-                  <img src={pageUrl} alt="" draggable={false} />
-                  {rect && (
-                    <div
-                      className="crop-rect"
-                      style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }}
-                    />
-                  )}
+          <div className="crop-layout">
+            <div className="crop-pages">
+              {pages.length > 1 && (
+                <div className="crop-nav">
+                  <button className="btn btn-small" disabled={pageNo === 0} onClick={() => setPageNo((n) => Math.max(0, n - 1))}>
+                    → הַקּוֹדֵם
+                  </button>
+                  <span className="crop-page-no">
+                    עַמּוּד {pageNo + 1} מִתּוֹךְ {pages.length}
+                  </span>
+                  <button
+                    className="btn btn-small"
+                    disabled={pageNo === pages.length - 1}
+                    onClick={() => setPageNo((n) => Math.min(pages.length - 1, n + 1))}
+                  >
+                    הַבָּא ←
+                  </button>
                 </div>
-              ) : (
-                <div className="help">⏳</div>
+              )}
+              {pages.length > 1 && (
+                <div className="crop-thumbs">
+                  {pages.map((_, i) => (
+                    <button key={i} className={`crop-thumb ${i === pageNo ? 'on' : ''}`} onClick={() => setPageNo(i)}>
+                      {thumbs[i] ? <img src={thumbs[i]} alt="" /> : <span>⏳</span>}
+                      <span>עַמּוּד {i + 1}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-            <div className="crop-controls">
-              <label className="field-label" htmlFor="crop-target">
-                לְאֵיזוֹ שְׁאֵלָה?
-              </label>
-              <select id="crop-target" className="select" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-                {targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                    {t.caption !== undefined ? ' 📍' : ''}
-                  </option>
-                ))}
-              </select>
-              {target?.hasStem && (
-                <select className="select" value={place} onChange={(e) => setPlace(e.target.value as MediaPlace)} aria-label="מיקום">
-                  <option value="stem">אַחֲרֵי הַטֶּקְסְט הַמְּשֻׁתָּף</option>
-                  <option value="text">אַחֲרֵי הַשְּׁאֵלָה</option>
+            <div className="crop-main">
+              <p className="help">סַמְּנִי בָּאֶצְבַּע מַלְבֵּן סְבִיב הַתְּמוּנָה: גְּרָרִי מִפִּנָּה לְפִנָּה.</p>
+              <div className="crop-stage">
+                {pageUrl ? (
+                  <div
+                    ref={surface}
+                    className="crop-surface"
+                    onPointerDown={(e) => {
+                      try {
+              (e.currentTarget as Element).setPointerCapture?.(e.pointerId); // keep following the finger
+            } catch {
+              /* not possible for this pointer; the gesture still works inside the area */
+            }
+                      const p = point(e);
+                      drag.current = p;
+                      setRect({ x: p.x, y: p.y, w: 0, h: 0 });
+                      setSaved('');
+                    }}
+                    onPointerMove={(e) => {
+                      const s = drag.current;
+                      if (!s) return;
+                      const p = point(e);
+                      setRect({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+                    }}
+                    onPointerUp={() => {
+                      drag.current = null;
+                      setRect((r) => (r && r.w > 0.02 && r.h > 0.02 ? r : null));
+                    }}
+                  >
+                    <img src={pageUrl} alt="" draggable={false} />
+                    {rect && (
+                      <div
+                        className="crop-rect"
+                        style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="help">⏳</div>
+                )}
+              </div>
+            </div>
+            <div className="crop-form">
+              <div className="crop-controls">
+                <label className="field-label" htmlFor="crop-target">
+                  לְאֵיזוֹ שְׁאֵלָה?
+                </label>
+                <select id="crop-target" className="select" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+                  {targets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                      {t.caption !== undefined ? ' 📍' : ''}
+                    </option>
+                  ))}
                 </select>
-              )}
-              <input
-                className="text-input"
-                value={caption}
-                placeholder="כִּיתוּב מִתַּחַת לַתְּמוּנָה, כְּמוֹ בַּמָּקוֹר (לֹא חוֹבָה)"
-                onChange={(e) => setCaption(e.target.value)}
-              />
-              <button className="btn btn-primary" disabled={!rect || saving || !target} onClick={cut}>
-                {saving ? '⏳ שׁוֹמֶרֶת…' : '✂️ לַחְתֹּךְ וְלִשְׁמֹר'}
-              </button>
+                {target?.hasStem && (
+                  <select className="select" value={place} onChange={(e) => setPlace(e.target.value as MediaPlace)} aria-label="מיקום">
+                    <option value="stem">אַחֲרֵי הַטֶּקְסְט הַמְּשֻׁתָּף</option>
+                    <option value="text">אַחֲרֵי הַשְּׁאֵלָה</option>
+                  </select>
+                )}
+                <input
+                  className="text-input"
+                  value={caption}
+                  placeholder="כִּיתוּב מִתַּחַת לַתְּמוּנָה, כְּמוֹ בַּמָּקוֹר (לֹא חוֹבָה)"
+                  onChange={(e) => setCaption(e.target.value)}
+                />
+                <button className="btn btn-primary" disabled={!rect || saving || !target} onClick={cut}>
+                  {saving ? '⏳ שׁוֹמֶרֶת…' : '✂️ לַחְתֹּךְ וְלִשְׁמֹר'}
+                </button>
+              </div>
+              {saved && <div className="notice ok">✅ {saved}</div>}
             </div>
-            {saved && <div className="notice ok">✅ {saved}</div>}
-          </>
+          </div>
         )}
       </div>
     </div>

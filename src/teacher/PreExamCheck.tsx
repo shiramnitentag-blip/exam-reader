@@ -1,11 +1,12 @@
 // "Check before the exam": everything the exam needs, each with ✓ or ✗.
+// (No battery row: Safari on the iPad does not tell the battery level.)
 import { useEffect, useState } from 'react';
 import type { Exam } from '../model';
 import { db } from '../db';
 import { speech } from '../speech';
 import { loadTTSSettings, providerFor } from '../tts';
 import { missingJobs } from '../tts/prepare';
-import { batteryInfo, checkMicrophone, freeSpaceMB, LOW_SPACE_MB, protectStorage } from '../checks';
+import { checkMicrophone, freeSpaceMB, LOW_SPACE_MB, protectStorage } from '../checks';
 
 type State = 'ok' | 'bad' | 'warn' | 'wait';
 type Row = { key: string; title: string; state: State; detail?: string; action?: { label: string; run: () => void } };
@@ -36,7 +37,6 @@ export function PreExamCheck({
       { key: 'audio', title: 'כָּל קִבְצֵי הַקּוֹל קַיָּמִים', state: 'wait' },
       { key: 'mic', title: 'הַמִּיקְרוֹפוֹן מְאֻשָּׁר', state: 'wait' },
       { key: 'space', title: 'יֵשׁ מַסְפִּיק מָקוֹם פָּנוּי', state: 'wait' },
-      { key: 'battery', title: 'סוֹלְלָה', state: 'wait' },
       { key: 'old', title: 'אֵין תְּשׁוּבוֹת יְשָׁנוֹת בַּמִּבְחָן', state: 'wait' },
       { key: 'name', title: 'שֵׁם הַתַּלְמִידָה מֻגְדָּר', state: 'wait' },
       { key: 'keep', title: 'הַנְּתוּנִים מֻגָּנִים מִמְּחִיקָה', state: 'wait' },
@@ -79,17 +79,6 @@ export function PreExamCheck({
           : f.freeMB >= LOW_SPACE_MB
             ? { state: 'ok', detail: mb(f.freeMB) + ' פְּנוּיִים' }
             : { state: 'bad', detail: `רַק ${mb(f.freeMB)} פְּנוּיִים. כְּדַאי לְפַנּוֹת מָקוֹם אוֹ לִמְחֹק תְּשׁוּבוֹת יְשָׁנוֹת.` },
-      ),
-    );
-
-    void batteryInfo().then((b) =>
-      set(
-        'battery',
-        !b
-          ? { state: 'warn', detail: 'בָּאַיְפֶּד אִי אֶפְשָׁר לִבְדֹּק מִכָּאן. וַדְּאִי שֶׁהַסּוֹלְלָה מֵעַל 50%, אוֹ שֶׁהָאַיְפֶּד מְחֻבָּר לַחַשְׁמַל.' }
-          : b.charging || b.level >= 0.5
-            ? { state: 'ok', detail: `${Math.round(b.level * 100)}%${b.charging ? ', בִּטְעִינָה' : ''}` }
-            : { state: 'bad', detail: `${Math.round(b.level * 100)}%. כְּדַאי לְחַבֵּר לַחַשְׁמַל.` },
       ),
     );
 
