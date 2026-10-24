@@ -1,6 +1,6 @@
 // Top level: the opening screen always comes first; the exam from there; teacher mode only through the PIN.
 import { useCallback, useEffect, useState } from 'react';
-import { db } from './db';
+import { db, ensureSession } from './db';
 import type { Exam } from './model';
 import { sampleExam, SAMPLE_ID } from './sampleExam';
 import { StudentApp } from './student/StudentApp';
@@ -11,7 +11,7 @@ import { TeacherApp, getActiveExamId } from './teacher/TeacherApp';
 import { speech } from './speech';
 import { loadTTSSettings } from './tts';
 
-type Mode = 'home' | 'exam' | 'pin' | 'teacher';
+type Mode = 'home' | 'exam' | 'pin' | 'start-pin' | 'teacher';
 
 /** The exam the student sees: the active one, only if the teacher approved it. */
 async function loadActiveExam(): Promise<Exam | null> {
@@ -25,6 +25,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('home');
   const [exam, setExam] = useState<Exam | null | undefined>(undefined);
   const [status, setStatus] = useState<ExamStatus>('none');
+  const [fresh, setFresh] = useState(false); // just started with the teacher's code: open on the instructions
 
   /** Reads the active exam and where she stands in it (after start, teacher mode, or the exam). */
   const refresh = useCallback(() => {
@@ -45,6 +46,7 @@ export default function App() {
 
   const toHome = () => {
     speech.stop();
+    setFresh(false);
     refresh();
     setMode('home');
   };
@@ -53,10 +55,26 @@ export default function App() {
 
   if (mode === 'teacher') return <TeacherApp onExit={toHome} />;
 
+  // Starting an exam needs the teacher's code; going on with a started one does not.
+  if (mode === 'start-pin' && exam)
+    return (
+      <PinScreen
+        purpose="הַתְחָלַת הַמִּבְחָן"
+        onCancel={toHome}
+        onSuccess={async () => {
+          // From now on the exam counts as started: back on the opening screen it is "continue".
+          await ensureSession(exam.id).catch(() => {});
+          setStatus('progress');
+          setFresh(true);
+          setMode('exam');
+        }}
+      />
+    );
+
   if (exam === undefined) return <div className="boot-msg">טוֹעֶנֶת…</div>;
 
   if (mode === 'exam' && exam && (status === 'new' || status === 'progress'))
-    return <StudentApp key={exam.id} exam={exam} entry={status} onHome={toHome} />;
+    return <StudentApp key={exam.id} exam={exam} entry={fresh ? 'new' : status} onHome={toHome} />;
 
   return (
     <Home
@@ -64,7 +82,7 @@ export default function App() {
       status={exam ? status : 'none'}
       onStart={() => {
         speech.stop();
-        setMode('exam');
+        setMode(status === 'new' ? 'start-pin' : 'exam');
       }}
       onTeacher={() => {
         speech.stop();

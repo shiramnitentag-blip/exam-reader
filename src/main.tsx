@@ -6,6 +6,7 @@ import '@fontsource/noto-sans-hebrew/latin-400.css';
 import '@fontsource/noto-sans-hebrew/latin-700.css';
 import './styles.css';
 import App from './App';
+import { startUpdates } from './update';
 
 // If something breaks, show a message instead of an empty screen.
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -35,3 +36,4 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 (window as Window & { __appStarted?: boolean }).__appStarted = true;
+startUpdates();

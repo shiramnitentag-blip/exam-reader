@@ -1984,3 +1984,14 @@ label.check-row input[type='checkbox'] {
   gap: 12px;
   margin-top: 16px;
 }
+
+/* ---------- "a new version" (teacher settings only) ---------- */
+.update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-color: var(--primary);
+  background: var(--soft);
+}

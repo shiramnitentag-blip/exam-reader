@@ -1,4 +1,5 @@
 import { APP_VERSION } from '../version';
+import { checkForUpdate, installUpdate, useUpdateState } from '../update';
 import { HomeButton } from './HomeButton';
 import { useEffect, useState } from 'react';
 import { db } from '../db';
@@ -18,6 +19,12 @@ export function Settings({ onBack, onHome }: { onBack: () => void; onHome: () =>
   const [pinMsg, setPinMsg] = useState('');
   const [student, setStudent] = useState('');
   const [studentSaved, setStudentSaved] = useState(false);
+  const update = useUpdateState();
+
+  // Look for a new version each time the settings open (only here; never on the student side).
+  useEffect(() => {
+    void checkForUpdate();
+  }, []);
 
   useEffect(() => {
     db.getMeta<string>('studentName').then((n) => setStudent(n ?? ''));
@@ -66,6 +73,34 @@ export function Settings({ onBack, onHome }: { onBack: () => void; onHome: () =>
       </header>
       <main className="main">
         <div className="page narrow">
+          {update.kind !== 'none' && (
+            <div className="notice update-notice">
+              <div>
+                {update.kind === 'failed' ? (
+                  <b>הָעִדְכּוּן לֹא הִצְלִיחַ. בִּדְקִי שֶׁיֵּשׁ אִינְטֶרְנֶט וְנַסִּי שׁוּב.</b>
+                ) : (
+                  <>
+                    <b>יֵשׁ גִּרְסָה חֲדָשָׁה.</b> הָעִדְכּוּן לוֹקֵחַ כַּמָּה שְׁנִיּוֹת וְצָרִיךְ אִינְטֶרְנֶט. לֹא מְעַדְכְּנִים בַּיּוֹם שֶׁל מִבְחָן.
+                  </>
+                )}
+              </div>
+              {update.kind === 'available' && (
+                <button className="btn btn-primary" onClick={() => void installUpdate()}>
+                  ⬇️ לְעַדְכֵּן עַכְשָׁו
+                </button>
+              )}
+              {update.kind === 'updating' && (
+                <button className="btn btn-primary" disabled>
+                  ⏳ מְעַדְכֶּנֶת…
+                </button>
+              )}
+              {update.kind === 'failed' && (
+                <button className="btn" onClick={() => void checkForUpdate()}>
+                  🔄 לִבְדֹּק שׁוּב
+                </button>
+              )}
+            </div>
+          )}
           <div className="card">
             <h2 className="section-title">שֵׁם הַתַּלְמִידָה</h2>
             <p className="help">הַשֵּׁם נִשְׁמָר עִם כָּל מִבְחָן שֶׁהִיא מַתְחִילָה, וּמוֹפִיעַ בַּתְּשׁוּבוֹת וּבַקְּבָצִים.</p>

@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react';
 import { checkPin, hasPin, setPin } from './pin';
 
 /** Number pad for the teacher's PIN. The first time, it asks her to choose one (twice). */
-export function PinScreen({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
+export function PinScreen({
+  onSuccess,
+  onCancel,
+  purpose = 'מַצַּב מוֹרָה',
+}: {
+  onSuccess: () => void;
+  onCancel: () => void;
+  /** What the code opens, shown in the title (teacher mode, or starting the exam). */
+  purpose?: string;
+}) {
   const [mode, setMode] = useState<'loading' | 'create' | 'confirm' | 'enter'>('loading');
   const [digits, setDigits] = useState('');
   const [first, setFirst] = useState('');
@@ -76,7 +85,7 @@ export function PinScreen({ onSuccess, onCancel }: { onSuccess: () => void; onCa
       ? 'בַּחֲרִי קוֹד שֶׁל 4 סְפָרוֹת לְמַצַּב מוֹרָה'
       : mode === 'confirm'
         ? 'הַקִּישִׁי אֶת הַקּוֹד שׁוּב, לְאִשּׁוּר'
-        : 'מַצַּב מוֹרָה: הַקִּישִׁי קוֹד';
+        : `${purpose}: הַקִּישִׁי קוֹד מוֹרָה`;
 
   return (
     <div className="pin-screen">
